@@ -61,3 +61,5 @@ htmlcov/
 
 # Documentation
 docs/
+
+venv/

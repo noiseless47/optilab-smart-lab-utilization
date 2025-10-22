@@ -15,6 +15,12 @@ from datetime import datetime
 from typing import List, Dict, Optional
 import psycopg2
 from psycopg2.extras import RealDictCursor
+import os
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+
 
 # For Windows WMI
 try:
@@ -22,7 +28,7 @@ try:
     WMI_AVAILABLE = True
 except ImportError:
     WMI_AVAILABLE = False
-    print("Warning: WMI not available. Install with: pip install WMI")
+    # ...existing code...
 
 # For Linux SSH
 try:
@@ -30,7 +36,7 @@ try:
     SSH_AVAILABLE = True
 except ImportError:
     SSH_AVAILABLE = False
-    print("Warning: SSH not available. Install with: pip install paramiko")
+    # ...existing code...
 
 # For SNMP
 try:
@@ -38,7 +44,7 @@ try:
     SNMP_AVAILABLE = True
 except ImportError:
     SNMP_AVAILABLE = False
-    print("Warning: SNMP not available. Install with: pip install pysnmp")
+    # ...existing code...
 
 
 logging.basicConfig(
@@ -51,14 +57,15 @@ logger = logging.getLogger(__name__)
 class DatabaseConnection:
     """PostgreSQL database connection manager"""
     
-    def __init__(self, host='localhost', database='lab_resource_monitor', 
-                 user='postgres', password='postgres'):
+    def __init__(self, host=None, database=None, user=None, password=None, port=None):
         self.conn_params = {
-            'host': host,
-            'database': database,
-            'user': user,
-            'password': password
+            'host': host or os.getenv('DB_HOST', 'localhost'),
+            'port': port or os.getenv('DB_PORT', '5432'),
+            'database': database or os.getenv('DB_NAME', 'lab_resource_monitor'),
+            'user': user or os.getenv('DB_USER', 'postgres'),
+            'password': password or os.getenv('DB_PASSWORD', 'postgres')
         }
+    # ...existing code...
         self.conn = None
     
     def connect(self):
@@ -112,10 +119,11 @@ class NetworkDiscovery:
         discovered_systems = []
         
         try:
-            # Run nmap scan: -sn = ping scan, -O = OS detection
+            # Run nmap scan: -sn = ping scan for discovery only
+            # Note: OS detection requires port scan, so we do simple host discovery first
             self.scanner.scan(
                 hosts=subnet_cidr,
-                arguments='-sn -O --max-rtt-timeout 500ms'
+                arguments='-sn --max-rtt-timeout 500ms'
             )
             
             for host in self.scanner.all_hosts():
@@ -246,7 +254,7 @@ class MetricsCollector:
                 if metrics:
                     self._save_metrics(system['system_id'], metrics)
                     success_count += 1
-                    logger.debug(f"✓ Collected metrics from {system['hostname']}")
+                    # ...existing code...
                 else:
                     fail_count += 1
                     logger.warning(f"✗ No metrics from {system['hostname']}")
@@ -446,10 +454,10 @@ def main():
     parser.add_argument('--scan', type=str, help='Network CIDR to scan (e.g., 10.30.0.0/16)')
     parser.add_argument('--dept', type=str, help='Department name')
     parser.add_argument('--collect-all', action='store_true', help='Collect metrics from all systems')
-    parser.add_argument('--db-host', type=str, default='localhost', help='Database host')
-    parser.add_argument('--db-name', type=str, default='lab_resource_monitor', help='Database name')
-    parser.add_argument('--db-user', type=str, default='postgres', help='Database user')
-    parser.add_argument('--db-pass', type=str, default='postgres', help='Database password')
+    parser.add_argument('--db-host', type=str, default=os.getenv('DB_HOST', 'localhost'), help='Database host')
+    parser.add_argument('--db-name', type=str, default=os.getenv('DB_NAME', 'lab_resource_monitor'), help='Database name')
+    parser.add_argument('--db-user', type=str, default=os.getenv('DB_USER', 'postgres'), help='Database user')
+    parser.add_argument('--db-pass', type=str, default=os.getenv('DB_PASSWORD', 'postgres'), help='Database password')
     
     args = parser.parse_args()
     
@@ -479,9 +487,7 @@ def main():
             discovery = NetworkDiscovery(db)
             systems = discovery.scan_network(args.scan, dept_id)
             
-            print(f"\nDiscovered {len(systems)} systems:")
-            for sys in systems:
-                print(f"  - {sys['hostname']} ({sys['ip_address']}) - {sys['os_type']}")
+            # ...existing code...
         
         elif args.collect_all:
             # Collect metrics from all systems
