@@ -1,0 +1,34 @@
+# Network Discovery & Agentless Monitoring Requirements
+# Install: pip install -r requirements.txt
+
+# Network Scanning
+python-nmap>=0.7.1
+scapy>=2.5.0  # Alternative for ARP scanning
+
+# Windows Monitoring (WMI)
+# Note: Windows-only, install conditionally
+# pip install WMI; python -c "import wmi"
+
+# Linux Monitoring (SSH)
+paramiko>=3.0.0
+
+# SNMP Monitoring
+pysnmp>=4.4.12
+
+# Database
+psycopg2-binary>=2.9.0
+
+# Utilities
+python-dotenv>=1.0.0
+pyyaml>=6.0
+requests>=2.31.0
+
+# Scheduling (for automated collection)
+apscheduler>=3.10.0
+
+# Logging
+python-json-logger>=2.0.0
+
+# Web Interface (optional)
+fastapi>=0.100.0
+uvicorn[standard]>=0.23.0
