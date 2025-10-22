@@ -54,82 +54,78 @@ A comprehensive **Database Management System (DBMS) project** that monitors comp
 
 ```mermaid
 flowchart TD
-    subgraph Lab[🖥️ COMPUTER LAB INFRASTRUCTURE (50+ Systems)]
-        A1[Lab PC #1<br>• Python Agent<br>• psutil / GPUtil<br>• 5-min cycle]
-        A2[Lab PC #2<br>• Python Agent<br>• psutil / GPUtil<br>• 5-min cycle]
-        AN[Lab PC #N<br>• Python Agent<br>• psutil / GPUtil<br>• 5-min cycle]
+    subgraph LAB["COMPUTER LAB INFRASTRUCTURE - 50+ Systems"]
+        A1["Lab PC #1<br/>• Python Agent<br/>• psutil / GPUtil<br/>• 5-min cycle"]
+        A2["Lab PC #2<br/>• Python Agent<br/>• psutil / GPUtil<br/>• 5-min cycle"]
+        AN["Lab PC #N<br/>• Python Agent<br/>• psutil / GPUtil<br/>• 5-min cycle"]
     end
 
     A1 -->|HTTP/JSON POST (5 min)| API
     A2 -->|HTTP/JSON POST (5 min)| API
     AN -->|HTTP/JSON POST (5 min)| API
 
-    subgraph API[🚀 FastAPI REST API Server (Python 3.8+)]
-        P1[POST /api/systems/register]
-        P2[POST /api/metrics]
-        G1[GET /api/analytics/top-consumers]
-        G2[GET /api/analytics/underutilized]
-        G3[GET /api/alerts/active]
-        F1[Async I/O (asyncpg)]
-        F2[Connection Pooling]
-        F3[Pydantic Validation]
-        F4[Auto Docs (Swagger)]
+    subgraph API["FASTAPI REST SERVER"]
+        P1["POST /api/systems/register"]
+        P2["POST /api/metrics"]
+        G1["GET /api/analytics/top-consumers"]
+        G2["GET /api/analytics/underutilized"]
+        G3["GET /api/alerts/active"]
+        F1["Async I/O (asyncpg)"]
+        F2["Connection Pooling"]
+        F3["Pydantic Validation"]
+        F4["Swagger Docs"]
     end
 
     API -->|asyncpg| DB
 
-    subgraph DB[💾 PostgreSQL 14+ / TimescaleDB 2.0+]
-        subgraph TSO[📊 Time-Series Optimization Layer]
-            T1[• Hypertables (daily chunks)]
-            T2[• Compression (after 7 days)]
-            T3[• Continuous Aggregates]
-            T4[• Retention Policies]
-            T5[• BRIN Indexes]
+    subgraph DB["PostgreSQL 14+ / TimescaleDB 2.0+"]
+        subgraph TSO["Time-Series Optimization Layer"]
+            T1["Hypertables (daily chunks)"]
+            T2["Compression (after 7 days)"]
+            T3["Continuous Aggregates"]
+            T4["Retention Policies"]
+            T5["BRIN Indexes"]
         end
 
-        subgraph CORE[🗂️ Core Tables (12)]
-            C1[systems]
-            C2[usage_metrics]
-            C3[alert_logs]
-            C4[performance_summaries]
-            C5[user_sessions]
+        subgraph CORE["Core Tables (12)"]
+            C1["systems"]
+            C2["usage_metrics"]
+            C3["alert_logs"]
+            C4["performance_summaries"]
+            C5["user_sessions"]
         end
 
-        subgraph INTEL[⚡ Intelligence Layer]
-            I1[Triggers (Real-time automation)]
-            I2[Stored Procedures & Functions]
-            I3[Window Functions / Advanced SQL]
+        subgraph INTEL["Intelligence Layer"]
+            I1["Triggers (Real-time automation)"]
+            I2["Stored Procedures & Functions"]
+            I3["Advanced SQL (Window Functions, CTEs)"]
         end
 
-        subgraph PERF[🚀 Performance Optimization]
-            P01[Indexing (B-tree, GIN, BRIN)]
-            P02[Materialized Views]
-            P03[pgBouncer (Pooling)]
+        subgraph PERF["Performance Optimization"]
+            P01["Indexes (B-tree, GIN, BRIN)"]
+            P02["Materialized Views"]
+            P03["pgBouncer (Pooling)"]
         end
     end
 
-    DB -->|SQL Queries| Viz
+    DB --> VIZ
 
-    subgraph Viz[📊 Visualization & Analytics]
-        V1[Grafana Dashboards<br>• Real-time Metrics<br>• Alerts & Trends]
-        V2[Direct SQL Queries<br>• Ad-hoc Analysis<br>• Health Checks]
-        V3[Python Analytics<br>• ML Models<br>• Automation & Reports]
+    subgraph VIZ["Visualization & Analytics"]
+        V1["Grafana Dashboards<br/>• Real-time Metrics<br/>• Alerts & Trends"]
+        V2["Direct SQL Queries<br/>• Ad-hoc Analysis<br/>• Health Checks"]
+        V3["Python Analytics<br/>• ML Models<br/>• Automation & Reports"]
     end
 
-    DB --> V1
-    DB --> V2
-    DB --> V3
+    VIZ --> SUMMARY
 
-    subgraph Summary[📈 Data Flow Summary]
-        S1[1️⃣ Agents collect metrics every 5 min]
-        S2[2️⃣ FastAPI validates & inserts data]
-        S3[3️⃣ DB triggers evaluate alerts]
-        S4[4️⃣ Timescale compresses & aggregates]
-        S5[5️⃣ Stored procedures provide analytics]
-        S6[6️⃣ Dashboards & reports visualize trends]
+    subgraph SUMMARY["Data Flow Summary"]
+        S1["1️⃣ Agents collect metrics every 5 min"]
+        S2["2️⃣ FastAPI validates & inserts data"]
+        S3["3️⃣ DB triggers evaluate alerts"]
+        S4["4️⃣ Timescale compresses & aggregates"]
+        S5["5️⃣ Stored procedures provide analytics"]
+        S6["6️⃣ Dashboards & reports visualize trends"]
     end
-
-    Viz --> Summary
 
 ---
 
