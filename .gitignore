@@ -59,7 +59,5 @@ desktop.ini
 htmlcov/
 .pytest_cache/
 
-# Documentation builds
-docs/_build/
-
+# Documentation
 docs/
