@@ -164,6 +164,7 @@ CREATE TABLE IF NOT EXISTS usage_metrics (
     ram_percent NUMERIC(5,2) CHECK (ram_percent >= 0 AND ram_percent <= 100),
     swap_total_gb NUMERIC(10,2),
     swap_used_gb NUMERIC(10,2),
+    swap_percent NUMERIC(5,2) CHECK (swap_percent >= 0 AND swap_percent <= 100),
     
     -- Disk Metrics
     disk_total_gb NUMERIC(10,2),
@@ -173,6 +174,7 @@ CREATE TABLE IF NOT EXISTS usage_metrics (
     disk_read_mbps NUMERIC(10,2),
     disk_write_mbps NUMERIC(10,2),
     disk_iops INT,
+    disk_io_wait_percent NUMERIC(5,2),
     
     -- Network Metrics
     network_sent_mbps NUMERIC(10,2),
@@ -275,12 +277,56 @@ CREATE INDEX idx_collection_logs_system ON collection_logs(system_id);
 CREATE INDEX idx_collection_logs_level ON collection_logs(log_level);
 
 -- ============================================================================
--- 8. ALERT RULES & LOGS (Reuse existing with enhancements)
+-- 8. ALERT RULES & LOGS
 -- ============================================================================
 
--- Keep existing alert_rules and alert_logs tables
--- Add department-level alerts
+-- Alert Rules Table
+CREATE TABLE IF NOT EXISTS alert_rules (
+    rule_id SERIAL PRIMARY KEY,
+    rule_name VARCHAR(200) NOT NULL UNIQUE,
+    metric_name VARCHAR(100) NOT NULL,        -- 'cpu_percent', 'ram_percent', 'disk_percent', etc.
+    condition VARCHAR(10) NOT NULL,            -- '>', '<', '>=', '<=', '='
+    threshold_value NUMERIC(10,2) NOT NULL,
+    duration_minutes INT DEFAULT 5,            -- Alert if condition met for N minutes
+    severity VARCHAR(20) DEFAULT 'warning',    -- 'info', 'warning', 'critical'
+    is_enabled BOOLEAN DEFAULT TRUE,
+    description TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
 
+COMMENT ON TABLE alert_rules IS 'Alert threshold rules for system metrics';
+
+CREATE INDEX idx_alert_rules_enabled ON alert_rules(is_enabled) WHERE is_enabled = TRUE;
+CREATE INDEX idx_alert_rules_metric ON alert_rules(metric_name);
+
+-- Alert Logs Table
+CREATE TABLE IF NOT EXISTS alert_logs (
+    alert_id BIGSERIAL PRIMARY KEY,
+    rule_id INT REFERENCES alert_rules(rule_id) ON DELETE CASCADE,
+    system_id INT REFERENCES systems(system_id) ON DELETE CASCADE,
+    triggered_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    resolved_at TIMESTAMPTZ,
+    metric_name VARCHAR(100) NOT NULL,
+    actual_value NUMERIC(10,2),
+    threshold_value NUMERIC(10,2),
+    severity VARCHAR(20) NOT NULL,
+    message TEXT NOT NULL,
+    metadata JSONB,
+    is_acknowledged BOOLEAN DEFAULT FALSE,
+    acknowledged_at TIMESTAMPTZ,
+    acknowledged_by VARCHAR(100),
+    notes TEXT
+);
+
+COMMENT ON TABLE alert_logs IS 'Log of all triggered alerts';
+
+CREATE INDEX idx_alert_logs_system ON alert_logs(system_id);
+CREATE INDEX idx_alert_logs_triggered ON alert_logs(triggered_at DESC);
+CREATE INDEX idx_alert_logs_unresolved ON alert_logs(resolved_at) WHERE resolved_at IS NULL;
+CREATE INDEX idx_alert_logs_severity ON alert_logs(severity);
+
+-- Department-level Alert Rules
 CREATE TABLE IF NOT EXISTS department_alert_rules (
     rule_id SERIAL PRIMARY KEY,
     dept_id INT REFERENCES departments(dept_id) ON DELETE CASCADE,
@@ -296,6 +342,88 @@ CREATE TABLE IF NOT EXISTS department_alert_rules (
 );
 
 COMMENT ON TABLE department_alert_rules IS 'Alert rules that apply to entire departments';
+
+-- ============================================================================
+-- 9. PERFORMANCE SUMMARIES
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS performance_summaries (
+    summary_id BIGSERIAL PRIMARY KEY,
+    system_id INT NOT NULL REFERENCES systems(system_id) ON DELETE CASCADE,
+    period_type VARCHAR(20) NOT NULL,          -- 'hourly', 'daily', 'weekly', 'monthly'
+    period_start TIMESTAMPTZ NOT NULL,
+    period_end TIMESTAMPTZ NOT NULL,
+    
+    -- CPU Statistics
+    avg_cpu_percent NUMERIC(5,2),
+    max_cpu_percent NUMERIC(5,2),
+    min_cpu_percent NUMERIC(5,2),
+    p95_cpu_percent NUMERIC(5,2),
+    cpu_above_80_minutes INT,
+    
+    -- RAM Statistics
+    avg_ram_percent NUMERIC(5,2),
+    max_ram_percent NUMERIC(5,2),
+    p95_ram_percent NUMERIC(5,2),
+    swap_used_minutes INT,
+    
+    -- GPU Statistics
+    avg_gpu_percent NUMERIC(5,2),
+    max_gpu_percent NUMERIC(5,2),
+    gpu_idle_minutes INT,
+    
+    -- Disk Statistics
+    avg_disk_io_wait NUMERIC(5,2),
+    total_disk_read_gb NUMERIC(12,2),
+    total_disk_write_gb NUMERIC(12,2),
+    
+    -- System Statistics
+    uptime_minutes INT,
+    utilization_score NUMERIC(5,2),
+    
+    -- Flags
+    is_underutilized BOOLEAN DEFAULT FALSE,
+    is_overutilized BOOLEAN DEFAULT FALSE,
+    has_bottleneck BOOLEAN DEFAULT FALSE,
+    anomaly_count INT DEFAULT 0,
+    
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    
+    UNIQUE(system_id, period_type, period_start)
+);
+
+COMMENT ON TABLE performance_summaries IS 'Aggregated performance statistics by time period';
+
+CREATE INDEX idx_perf_summary_system_period ON performance_summaries(system_id, period_start DESC);
+CREATE INDEX idx_perf_summary_period_type ON performance_summaries(period_type, period_start DESC);
+
+-- ============================================================================
+-- 10. OPTIMIZATION REPORTS
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS optimization_reports (
+    report_id SERIAL PRIMARY KEY,
+    system_id INT REFERENCES systems(system_id) ON DELETE CASCADE,
+    report_type VARCHAR(50) NOT NULL,          -- 'automated_analysis', 'manual_review', 'capacity_planning'
+    severity VARCHAR(20),                      -- 'low', 'medium', 'high', 'critical'
+    title VARCHAR(255) NOT NULL,
+    description TEXT,
+    recommendations JSONB,                     -- Array of recommendation objects
+    priority_score INT,
+    analysis_period_start TIMESTAMPTZ,
+    analysis_period_end TIMESTAMPTZ,
+    status VARCHAR(20) DEFAULT 'pending',      -- 'pending', 'approved', 'implemented', 'rejected'
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    reviewed_at TIMESTAMPTZ,
+    reviewed_by VARCHAR(100),
+    implementation_notes TEXT
+);
+
+COMMENT ON TABLE optimization_reports IS 'Hardware optimization and upgrade recommendations';
+
+CREATE INDEX idx_optimization_reports_system ON optimization_reports(system_id);
+CREATE INDEX idx_optimization_reports_status ON optimization_reports(status);
+CREATE INDEX idx_optimization_reports_severity ON optimization_reports(severity, priority_score DESC);
 
 -- ============================================================================
 -- SAMPLE DATA
@@ -339,6 +467,19 @@ SELECT
     TRUE
 FROM departments
 ON CONFLICT (job_name) DO NOTHING;
+
+-- Insert default alert rules
+INSERT INTO alert_rules (rule_name, metric_name, condition, threshold_value, duration_minutes, severity, description)
+VALUES
+    ('High CPU Usage', 'cpu_percent', '>', 90, 15, 'warning', 'CPU usage above 90% for 15 minutes'),
+    ('Critical CPU Usage', 'cpu_percent', '>', 95, 10, 'critical', 'CPU usage above 95% for 10 minutes'),
+    ('High RAM Usage', 'ram_percent', '>', 85, 15, 'warning', 'RAM usage above 85% for 15 minutes'),
+    ('Critical RAM Usage', 'ram_percent', '>', 95, 10, 'critical', 'RAM usage above 95% for 10 minutes'),
+    ('High Disk Usage', 'disk_percent', '>', 85, 30, 'warning', 'Disk usage above 85% for 30 minutes'),
+    ('Critical Disk Usage', 'disk_percent', '>', 95, 15, 'critical', 'Disk usage above 95% for 15 minutes'),
+    ('High GPU Temperature', 'gpu_temperature', '>', 85, 10, 'warning', 'GPU temperature above 85°C for 10 minutes'),
+    ('High CPU Temperature', 'cpu_temperature', '>', 80, 10, 'warning', 'CPU temperature above 80°C for 10 minutes')
+ON CONFLICT (rule_name) DO NOTHING;
 
 -- ============================================================================
 -- VIEWS FOR EASY QUERYING

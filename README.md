@@ -410,59 +410,67 @@ optilab-smart-lab-utilization/    subgraph SUMMARY["Data Flow Summary"]
 
 ### 1-Minute Setup
 
+```powershell
+# Create database
+psql -U postgres -c "CREATE DATABASE lab_resource_monitor;"
+
+# Load schema and database objects
+cd d:\dbms
+psql -U postgres -d lab_resource_monitor -f database/schema.sql
+psql -U postgres -d lab_resource_monitor -f database/stored_procedures.sql
+psql -U postgres -d lab_resource_monitor -f database/triggers.sql
+psql -U postgres -d lab_resource_monitor -f database/indexes.sql
+
+# Configure environment
+copy .env.example .env
+# Edit .env with your credentials
+
+# Install dependencies
+cd collector
+pip install -r requirements.txt
+
+# Test scan on local network
+python network_collector.py --scan 192.168.1.0/24 --dept ISE
+
+# Collect metrics from discovered systems
+python network_collector.py --collect-all
+```
+
+**🎉 Done!** Systems automatically discovered and monitored.
+
+**📚 For production**: Configure credentials in `.env` file
+
+---
+
 ## 📚 Documentation
 
-```powershell
-
-- **[Installation Guide](docs/INSTALLATION.md)** - Detailed installation instructions# Create database
-
-- **[API Reference](docs/API_REFERENCE.md)** - Complete API documentationpsql -U postgres -c "CREATE DATABASE lab_resource_monitor;"
-
+- **[Installation Guide](docs/INSTALLATION.md)** - Detailed installation instructions
+- **[API Reference](docs/API_REFERENCE.md)** - Complete API documentation
 - **[Architecture](docs/ARCHITECTURE.md)** - System design and components
 
-# Load schema (use agentless version!)
+## 🤝 Contributing
 
-## 🤝 Contributingcd d:\dbms
-
-psql -U postgres -d lab_resource_monitor -f database/schema_agentless.sql
-
-Contributions are welcome! Please:psql -U postgres -d lab_resource_monitor -f database/stored_procedures.sql
-
-psql -U postgres -d lab_resource_monitor -f database/triggers.sql
+Contributions are welcome! Please:
 
 1. Fork the repository
-
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)# Install dependencies
-
-3. Commit your changes (`git commit -m 'Add amazing feature'`)cd collector
-
-4. Push to the branch (`git push origin feature/amazing-feature`)pip install -r requirements.txt
-
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
 
-# Test scan on local network (safe test)
+## 📝 License
 
-## 📝 Licensepython network_collector.py --scan 192.168.1.0/24 --dept ISE
+This project is licensed under the MIT License.
 
+## 👥 Authors
 
+- **Noiseless47** - *Initial work* - [GitHub](https://github.com/noiseless47)
 
-This project is licensed under the MIT License.# Collect metrics from discovered systems
+---
 
-python network_collector.py --collect-all
+**⭐ Star this repo if you find it helpful!**
 
-## 👥 Authors```
-
-
-
-- **Noiseless47** - *Initial work* - [GitHub](https://github.com/noiseless47)**🎉 Done!** Systems automatically discovered and monitored.
-
-
-
----**📚 For production deployment**: Configure credentials and network ranges in database
-
-
-
-**⭐ Star this repo if you find it helpful!**---
+---
 
 
 ## 📊 Database Schema

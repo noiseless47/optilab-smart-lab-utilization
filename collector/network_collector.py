@@ -287,8 +287,15 @@ class MetricsCollector:
         
         try:
             # Connect to remote Windows machine
-            # Note: In production, get credentials from secure vault
-            conn = wmi.WMI(computer=ip, user="admin", password="password")
+            # Get credentials from environment or database
+            wmi_user = os.getenv('WMI_USERNAME', 'administrator')
+            wmi_pass = os.getenv('WMI_PASSWORD', '')
+            
+            if not wmi_pass:
+                logger.warning(f"No WMI password configured for {ip}")
+                return None
+            
+            conn = wmi.WMI(computer=ip, user=wmi_user, password=wmi_pass)
             
             metrics = {}
             
@@ -330,8 +337,19 @@ class MetricsCollector:
             ssh = paramiko.SSHClient()
             ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
             
-            # In production, get credentials from secure vault
-            ssh.connect(ip, username='monitor', password='password', timeout=10)
+            # Get credentials from environment or database
+            ssh_user = os.getenv('SSH_USERNAME', 'monitor')
+            ssh_pass = os.getenv('SSH_PASSWORD', '')
+            ssh_key = os.getenv('SSH_KEY_PATH', '')
+            
+            # Try key-based auth first, then password
+            if ssh_key and os.path.exists(ssh_key):
+                ssh.connect(ip, username=ssh_user, key_filename=ssh_key, timeout=10)
+            elif ssh_pass:
+                ssh.connect(ip, username=ssh_user, password=ssh_pass, timeout=10)
+            else:
+                logger.warning(f"No SSH credentials configured for {ip}")
+                return None
             
             metrics = {}
             

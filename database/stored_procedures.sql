@@ -96,7 +96,7 @@ COMMENT ON FUNCTION calculate_utilization_score IS
 -- Purpose: Identify what type of bottleneck a system is experiencing
 
 CREATE OR REPLACE FUNCTION detect_bottleneck(
-    p_system_id UUID,
+    p_system_id INT,
     p_period_start TIMESTAMPTZ,
     p_period_end TIMESTAMPTZ
 )
@@ -145,7 +145,7 @@ COMMENT ON FUNCTION detect_bottleneck IS
 -- Purpose: Calculate and insert daily performance summary for a system
 
 CREATE OR REPLACE PROCEDURE generate_daily_summary(
-    p_system_id UUID,
+    p_system_id INT,
     p_date DATE
 )
 LANGUAGE plpgsql
@@ -252,7 +252,7 @@ COMMENT ON PROCEDURE generate_daily_summary IS
 -- Purpose: Analyze system performance and generate upgrade recommendations
 
 CREATE OR REPLACE FUNCTION generate_hardware_recommendations(
-    p_system_id UUID,
+    p_system_id INT,
     p_analysis_days INTEGER DEFAULT 30
 )
 RETURNS TABLE (
@@ -366,14 +366,14 @@ COMMENT ON FUNCTION generate_hardware_recommendations IS
 -- ============================================================================
 
 CREATE OR REPLACE PROCEDURE create_optimization_report(
-    p_system_id UUID,
+    p_system_id INT,
     p_analysis_days INTEGER DEFAULT 30
 )
 LANGUAGE plpgsql
 AS $$
 DECLARE
     v_recommendations JSONB;
-    v_report_id UUID;
+    v_report_id INT;
     v_system_hostname VARCHAR;
     v_severity VARCHAR;
     v_priority INTEGER;
