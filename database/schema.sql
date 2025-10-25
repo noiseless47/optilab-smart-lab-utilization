@@ -1,513 +1,476 @@
 -- ============================================================================
--- Smart Resource Utilization & Hardware Optimization System
--- Core Database Schema
--- ============================================================================
--- Database: lab_resource_monitor
--- Version: 1.0
--- DBMS: PostgreSQL 14+ / TimescaleDB 2.0+
+-- AGENTLESS MONITORING DATABASE SCHEMA
+-- Network-based discovery with department/VLAN organization
 -- ============================================================================
 
--- Create database (run this separately if needed)
--- CREATE DATABASE lab_resource_monitor;
--- \c lab_resource_monitor;
-
--- Enable required extensions
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-CREATE EXTENSION IF NOT EXISTS "pg_trgm"; -- For text search optimization
-
 -- ============================================================================
--- TABLES: Core System Information
+-- 1. DEPARTMENTS & NETWORKS
 -- ============================================================================
 
--- Table: systems
--- Purpose: Store hardware specifications and metadata for each lab machine
-CREATE TABLE systems (
-    system_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    hostname VARCHAR(255) NOT NULL UNIQUE,
-    ip_address INET,
-    location VARCHAR(255), -- e.g., "Lab A", "Server Room B"
-    department VARCHAR(100),
-    
-    -- Hardware Specifications
-    cpu_model VARCHAR(255),
-    cpu_cores INTEGER,
-    cpu_threads INTEGER,
-    cpu_base_freq NUMERIC(6,2), -- GHz
-    
-    ram_total_gb NUMERIC(8,2),
-    ram_type VARCHAR(50), -- DDR4, DDR5, etc.
-    
-    gpu_model VARCHAR(255),
-    gpu_memory_gb NUMERIC(8,2),
-    gpu_count INTEGER DEFAULT 0,
-    
-    disk_total_gb NUMERIC(10,2),
-    disk_type VARCHAR(50), -- SSD, HDD, NVMe
-    
-    os_name VARCHAR(100),
-    os_version VARCHAR(100),
-    
-    -- Status
-    status VARCHAR(20) DEFAULT 'active' CHECK (status IN ('active', 'maintenance', 'retired', 'offline')),
-    
-    -- Metadata
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    last_seen TIMESTAMP,
-    
-    -- Indexing
-    CONSTRAINT valid_cores CHECK (cpu_cores > 0),
-    CONSTRAINT valid_ram CHECK (ram_total_gb > 0)
+CREATE TABLE IF NOT EXISTS departments (
+    dept_id SERIAL PRIMARY KEY,
+    dept_name VARCHAR(100) NOT NULL UNIQUE,
+    dept_code VARCHAR(20),                    -- 'ISE', 'CSE', 'ECE'
+    vlan_id VARCHAR(20),                       -- '30', '31', '32'
+    subnet_cidr VARCHAR(50),                   -- '10.30.0.0/16', '192.168.30.0/24'
+    description TEXT,
+    contact_person VARCHAR(200),
+    contact_email VARCHAR(200),
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_systems_hostname ON systems(hostname);
-CREATE INDEX idx_systems_status ON systems(status);
-CREATE INDEX idx_systems_location ON systems(location);
-CREATE INDEX idx_systems_last_seen ON systems(last_seen);
-
-COMMENT ON TABLE systems IS 'Master table for lab system hardware specifications';
+COMMENT ON TABLE departments IS 'Academic departments and their network configuration';
 
 -- ============================================================================
--- TABLES: Time-Series Metrics
+-- 2. NETWORK SCANS (Discovery History)
 -- ============================================================================
 
--- Table: usage_metrics
--- Purpose: Store detailed real-time system utilization metrics
-CREATE TABLE usage_metrics (
-    metric_id BIGSERIAL,
-    system_id UUID NOT NULL REFERENCES systems(system_id) ON DELETE CASCADE,
-    timestamp TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+CREATE TABLE IF NOT EXISTS network_scans (
+    scan_id SERIAL PRIMARY KEY,
+    dept_id INT REFERENCES departments(dept_id) ON DELETE CASCADE,
+    scan_type VARCHAR(50) NOT NULL,            -- 'nmap', 'arp', 'manual'
+    target_range VARCHAR(100) NOT NULL,        -- '10.30.0.0/16'
+    scan_start TIMESTAMPTZ NOT NULL,
+    scan_end TIMESTAMPTZ,
+    duration_seconds INT GENERATED ALWAYS AS 
+        (EXTRACT(EPOCH FROM (scan_end - scan_start))::INT) STORED,
+    systems_found INT DEFAULT 0,
+    systems_new INT DEFAULT 0,
+    systems_updated INT DEFAULT 0,
+    status VARCHAR(20) DEFAULT 'running',      -- 'running', 'completed', 'failed'
+    error_message TEXT,
+    scan_parameters JSONB,                     -- Additional scan options
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+COMMENT ON TABLE network_scans IS 'History of network discovery scans';
+
+CREATE INDEX idx_network_scans_dept ON network_scans(dept_id);
+CREATE INDEX idx_network_scans_status ON network_scans(status);
+CREATE INDEX idx_network_scans_start ON network_scans(scan_start DESC);
+
+-- ============================================================================
+-- 3. COLLECTION CREDENTIALS (Secure Vault)
+-- ============================================================================
+
+-- Enable encryption extension
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+CREATE TABLE IF NOT EXISTS collection_credentials (
+    credential_id SERIAL PRIMARY KEY,
+    credential_name VARCHAR(100) NOT NULL UNIQUE,
+    credential_type VARCHAR(50) NOT NULL,      -- 'ssh', 'wmi', 'snmp'
+    username VARCHAR(255),
+    password_encrypted BYTEA,                  -- Encrypted password
+    ssh_key_path TEXT,
+    snmp_community VARCHAR(100),
+    additional_config JSONB,                   -- Extra parameters
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    last_used TIMESTAMPTZ,
+    used_count INT DEFAULT 0
+);
+
+COMMENT ON TABLE collection_credentials IS 'Encrypted credentials for remote system access';
+
+-- Helper functions for encryption/decryption
+-- Usage: pgp_sym_encrypt('password', 'master_key')
+-- Usage: pgp_sym_decrypt(password_encrypted, 'master_key')
+
+-- ============================================================================
+-- 4. SYSTEMS (Enhanced with Network Info)
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS systems (
+    system_id SERIAL PRIMARY KEY,
+    dept_id INT REFERENCES departments(dept_id) ON DELETE SET NULL,
     
-    -- CPU Metrics
-    cpu_percent NUMERIC(5,2), -- Overall CPU usage percentage
-    cpu_per_core JSONB, -- Per-core usage as JSON array
-    cpu_freq_current NUMERIC(8,2), -- Current frequency in MHz
-    cpu_temp NUMERIC(5,2), -- Temperature in Celsius
+    -- Network Identification
+    hostname VARCHAR(255) NOT NULL,
+    ip_address INET NOT NULL UNIQUE,           -- PostgreSQL native IP type
+    mac_address MACADDR,                       -- PostgreSQL native MAC type
     
-    -- Memory Metrics
-    ram_used_gb NUMERIC(8,2),
-    ram_available_gb NUMERIC(8,2),
-    ram_percent NUMERIC(5,2),
-    swap_used_gb NUMERIC(8,2),
-    swap_percent NUMERIC(5,2),
+    -- System Information
+    os_type VARCHAR(50),                       -- 'Windows', 'Linux', 'macOS', 'Unknown'
+    os_version VARCHAR(200),
+    os_architecture VARCHAR(20),               -- 'x64', 'x86', 'ARM'
     
-    -- GPU Metrics (NULL if no GPU)
-    gpu_utilization NUMERIC(5,2), -- GPU usage percentage
-    gpu_memory_used_gb NUMERIC(8,2),
-    gpu_memory_percent NUMERIC(5,2),
-    gpu_temp NUMERIC(5,2),
-    gpu_power_draw NUMERIC(6,2), -- Watts
+    -- Hardware Specs (discovered or collected)
+    cpu_model VARCHAR(255),
+    cpu_cores INT,
+    ram_total_gb NUMERIC(10,2),
+    disk_total_gb NUMERIC(10,2),
+    gpu_model VARCHAR(255),
     
-    -- Disk I/O Metrics
-    disk_read_mb_s NUMERIC(10,2), -- MB/s
-    disk_write_mb_s NUMERIC(10,2),
-    disk_read_ops INTEGER,
-    disk_write_ops INTEGER,
-    disk_io_wait_percent NUMERIC(5,2),
-    disk_used_gb NUMERIC(10,2),
-    disk_percent NUMERIC(5,2),
+    -- Location
+    building VARCHAR(100),
+    room_number VARCHAR(50),
+    lab_name VARCHAR(100),
+    physical_location TEXT,
     
-    -- Network Metrics
-    net_sent_mb_s NUMERIC(10,2),
-    net_recv_mb_s NUMERIC(10,2),
-    net_packets_sent INTEGER,
-    net_packets_recv INTEGER,
+    -- Collection Configuration
+    collection_method VARCHAR(50),             -- 'wmi', 'ssh', 'snmp', 'agent', 'none'
+    credential_id INT REFERENCES collection_credentials(credential_id),
+    snmp_enabled BOOLEAN DEFAULT FALSE,
+    ssh_port INT DEFAULT 22,
+    wmi_enabled BOOLEAN DEFAULT FALSE,
+    collection_interval_seconds INT DEFAULT 300,  -- 5 minutes
     
-    -- Process Metrics
-    process_count INTEGER,
-    thread_count INTEGER,
-    
-    -- System Load
-    load_avg_1min NUMERIC(6,2),
-    load_avg_5min NUMERIC(6,2),
-    load_avg_15min NUMERIC(6,2),
+    -- Status & Timestamps
+    status VARCHAR(20) DEFAULT 'discovered',   -- 'discovered', 'active', 'offline', 'maintenance'
+    first_seen TIMESTAMPTZ DEFAULT NOW(),
+    last_seen TIMESTAMPTZ,
+    last_scan_id INT REFERENCES network_scans(scan_id),
     
     -- Metadata
-    collection_duration_ms INTEGER, -- Time taken to collect metrics
+    tags TEXT[],                               -- Array of tags: ['lab-pc', 'faculty', 'gaming']
+    notes TEXT,
+    is_monitored BOOLEAN DEFAULT TRUE,
+    
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+COMMENT ON TABLE systems IS 'Discovered and monitored computer systems';
+
+-- Indexes for performance
+CREATE INDEX idx_systems_dept ON systems(dept_id);
+CREATE INDEX idx_systems_ip ON systems USING gist(ip_address inet_ops);
+CREATE INDEX idx_systems_mac ON systems(mac_address);
+CREATE INDEX idx_systems_hostname ON systems(hostname);
+CREATE INDEX idx_systems_status ON systems(status);
+CREATE INDEX idx_systems_last_seen ON systems(last_seen DESC);
+CREATE INDEX idx_systems_tags ON systems USING gin(tags);
+
+-- ============================================================================
+-- 5. USAGE METRICS (Time-Series Data)
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS usage_metrics (
+    metric_id BIGSERIAL,
+    system_id INT NOT NULL REFERENCES systems(system_id) ON DELETE CASCADE,
+    timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    
+    -- CPU Metrics
+    cpu_percent NUMERIC(5,2) CHECK (cpu_percent >= 0 AND cpu_percent <= 100),
+    cpu_per_core NUMERIC(5,2)[],              -- Array of per-core usage
+    cpu_temperature NUMERIC(5,2),
+    
+    -- Memory Metrics
+    ram_total_gb NUMERIC(10,2),
+    ram_used_gb NUMERIC(10,2),
+    ram_free_gb NUMERIC(10,2),
+    ram_percent NUMERIC(5,2) CHECK (ram_percent >= 0 AND ram_percent <= 100),
+    swap_total_gb NUMERIC(10,2),
+    swap_used_gb NUMERIC(10,2),
+    
+    -- Disk Metrics
+    disk_total_gb NUMERIC(10,2),
+    disk_used_gb NUMERIC(10,2),
+    disk_free_gb NUMERIC(10,2),
+    disk_percent NUMERIC(5,2) CHECK (disk_percent >= 0 AND disk_percent <= 100),
+    disk_read_mbps NUMERIC(10,2),
+    disk_write_mbps NUMERIC(10,2),
+    disk_iops INT,
+    
+    -- Network Metrics
+    network_sent_mbps NUMERIC(10,2),
+    network_recv_mbps NUMERIC(10,2),
+    network_connections INT,
+    
+    -- GPU Metrics (if available)
+    gpu_percent NUMERIC(5,2),
+    gpu_memory_used_gb NUMERIC(10,2),
+    gpu_temperature NUMERIC(5,2),
+    
+    -- System Metrics
+    uptime_seconds BIGINT,
+    active_processes INT,
+    logged_in_users INT,
+    
+    -- Collection Metadata
+    collection_method VARCHAR(50),
+    collection_duration_ms INT,
     
     PRIMARY KEY (system_id, timestamp)
 );
 
--- Optimize for time-series queries
+COMMENT ON TABLE usage_metrics IS 'Time-series resource utilization metrics';
+
+-- Indexes for time-series queries
 CREATE INDEX idx_usage_metrics_timestamp ON usage_metrics(timestamp DESC);
 CREATE INDEX idx_usage_metrics_system_time ON usage_metrics(system_id, timestamp DESC);
-CREATE INDEX idx_usage_metrics_cpu_percent ON usage_metrics(cpu_percent);
-CREATE INDEX idx_usage_metrics_ram_percent ON usage_metrics(ram_percent);
-
-COMMENT ON TABLE usage_metrics IS 'Time-series storage for system performance metrics';
 
 -- ============================================================================
--- TABLES: User Activity Tracking
+-- 6. COLLECTION JOBS (Scheduled Tasks)
 -- ============================================================================
 
--- Table: users
--- Purpose: Store user information for session tracking
-CREATE TABLE users (
-    user_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    username VARCHAR(100) NOT NULL UNIQUE,
-    full_name VARCHAR(255),
-    email VARCHAR(255),
-    role VARCHAR(50), -- student, faculty, admin
-    department VARCHAR(100),
+CREATE TABLE IF NOT EXISTS collection_jobs (
+    job_id SERIAL PRIMARY KEY,
+    job_name VARCHAR(200) NOT NULL UNIQUE,
+    job_type VARCHAR(50) NOT NULL,            -- 'discovery', 'metrics_collection'
+    dept_id INT REFERENCES departments(dept_id) ON DELETE CASCADE,
     
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    last_login TIMESTAMP
+    -- Schedule Configuration
+    schedule_cron VARCHAR(100),                -- '*/5 * * * *' (every 5 min)
+    schedule_description TEXT,
+    enabled BOOLEAN DEFAULT TRUE,
+    
+    -- Execution Tracking
+    last_run_start TIMESTAMPTZ,
+    last_run_end TIMESTAMPTZ,
+    last_run_status VARCHAR(20),               -- 'success', 'failed', 'partial'
+    last_run_message TEXT,
+    next_run TIMESTAMPTZ,
+    
+    -- Statistics
+    total_runs INT DEFAULT 0,
+    successful_runs INT DEFAULT 0,
+    failed_runs INT DEFAULT 0,
+    avg_duration_seconds NUMERIC(10,2),
+    
+    -- Configuration
+    job_config JSONB,                          -- Job-specific parameters
+    
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_users_username ON users(username);
-CREATE INDEX idx_users_role ON users(role);
+COMMENT ON TABLE collection_jobs IS 'Automated discovery and collection job schedules';
 
--- Table: user_sessions
--- Purpose: Track user login sessions and activity
-CREATE TABLE user_sessions (
-    session_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID REFERENCES users(user_id),
-    system_id UUID NOT NULL REFERENCES systems(system_id),
-    username VARCHAR(100) NOT NULL, -- Denormalized for faster queries
+CREATE INDEX idx_collection_jobs_dept ON collection_jobs(dept_id);
+CREATE INDEX idx_collection_jobs_enabled ON collection_jobs(enabled) WHERE enabled = TRUE;
+CREATE INDEX idx_collection_jobs_next_run ON collection_jobs(next_run);
+
+-- ============================================================================
+-- 7. COLLECTION LOGS (Audit Trail)
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS collection_logs (
+    log_id BIGSERIAL PRIMARY KEY,
+    log_timestamp TIMESTAMPTZ DEFAULT NOW(),
+    job_id INT REFERENCES collection_jobs(job_id) ON DELETE SET NULL,
+    system_id INT REFERENCES systems(system_id) ON DELETE CASCADE,
     
-    login_time TIMESTAMPTZ NOT NULL,
-    logout_time TIMESTAMPTZ,
-    session_duration_minutes INTEGER GENERATED ALWAYS AS 
-        (EXTRACT(EPOCH FROM (logout_time - login_time)) / 60) STORED,
+    -- Log Details
+    log_level VARCHAR(20),                     -- 'INFO', 'WARNING', 'ERROR'
+    log_message TEXT NOT NULL,
+    collection_method VARCHAR(50),
     
-    -- Activity Summary
-    active_processes JSONB, -- List of major processes used
-    peak_cpu_usage NUMERIC(5,2),
-    peak_ram_usage NUMERIC(5,2),
-    total_disk_read_gb NUMERIC(10,2),
-    total_disk_write_gb NUMERIC(10,2),
+    -- Error Details
+    error_code VARCHAR(50),
+    error_details JSONB,
     
-    session_type VARCHAR(50), -- interactive, batch, remote
-    is_active BOOLEAN DEFAULT TRUE,
+    -- Performance
+    response_time_ms INT,
     
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_user_sessions_user ON user_sessions(user_id);
-CREATE INDEX idx_user_sessions_system ON user_sessions(system_id);
-CREATE INDEX idx_user_sessions_login_time ON user_sessions(login_time DESC);
-CREATE INDEX idx_user_sessions_active ON user_sessions(is_active) WHERE is_active = TRUE;
+COMMENT ON TABLE collection_logs IS 'Audit log for all collection activities';
 
-COMMENT ON TABLE user_sessions IS 'User login sessions with activity summaries';
-
--- ============================================================================
--- TABLES: Analytics & Aggregations
--- ============================================================================
-
--- Table: performance_summaries
--- Purpose: Pre-computed daily/hourly summaries for faster analytics
-CREATE TABLE performance_summaries (
-    summary_id BIGSERIAL PRIMARY KEY,
-    system_id UUID NOT NULL REFERENCES systems(system_id),
-    
-    period_type VARCHAR(20) NOT NULL CHECK (period_type IN ('hourly', 'daily', 'weekly', 'monthly')),
-    period_start TIMESTAMPTZ NOT NULL,
-    period_end TIMESTAMPTZ NOT NULL,
-    
-    -- CPU Statistics
-    avg_cpu_percent NUMERIC(5,2),
-    max_cpu_percent NUMERIC(5,2),
-    min_cpu_percent NUMERIC(5,2),
-    p95_cpu_percent NUMERIC(5,2), -- 95th percentile
-    cpu_above_80_minutes INTEGER, -- Time spent above 80% usage
-    
-    -- RAM Statistics
-    avg_ram_percent NUMERIC(5,2),
-    max_ram_percent NUMERIC(5,2),
-    p95_ram_percent NUMERIC(5,2),
-    swap_used_minutes INTEGER, -- Time swap was active
-    
-    -- GPU Statistics (NULL if no GPU)
-    avg_gpu_percent NUMERIC(5,2),
-    max_gpu_percent NUMERIC(5,2),
-    gpu_idle_minutes INTEGER,
-    
-    -- Disk I/O Statistics
-    avg_disk_io_wait NUMERIC(5,2),
-    total_disk_read_gb NUMERIC(12,2),
-    total_disk_write_gb NUMERIC(12,2),
-    
-    -- System Health Indicators
-    uptime_minutes INTEGER,
-    anomaly_count INTEGER DEFAULT 0,
-    utilization_score NUMERIC(5,2), -- Composite efficiency score (0-100)
-    
-    -- Flags
-    is_underutilized BOOLEAN, -- avg_cpu < 30% AND avg_ram < 30%
-    is_overutilized BOOLEAN, -- p95_cpu > 90% OR p95_ram > 90%
-    has_bottleneck BOOLEAN,
-    
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    
-    UNIQUE(system_id, period_type, period_start)
-);
-
-CREATE INDEX idx_perf_summary_system_period ON performance_summaries(system_id, period_type, period_start DESC);
-CREATE INDEX idx_perf_summary_underutilized ON performance_summaries(is_underutilized) WHERE is_underutilized = TRUE;
-CREATE INDEX idx_perf_summary_overutilized ON performance_summaries(is_overutilized) WHERE is_overutilized = TRUE;
-
-COMMENT ON TABLE performance_summaries IS 'Aggregated performance metrics by time period';
+CREATE INDEX idx_collection_logs_timestamp ON collection_logs(log_timestamp DESC);
+CREATE INDEX idx_collection_logs_system ON collection_logs(system_id);
+CREATE INDEX idx_collection_logs_level ON collection_logs(log_level);
 
 -- ============================================================================
--- TABLES: Optimization & Recommendations
+-- 8. ALERT RULES & LOGS (Reuse existing with enhancements)
 -- ============================================================================
 
--- Table: optimization_reports
--- Purpose: Store generated optimization recommendations
-CREATE TABLE optimization_reports (
-    report_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    system_id UUID REFERENCES systems(system_id),
-    
-    report_type VARCHAR(50) NOT NULL, -- hardware_upgrade, reallocation, configuration
-    severity VARCHAR(20) CHECK (severity IN ('low', 'medium', 'high', 'critical')),
-    
-    title VARCHAR(255) NOT NULL,
-    description TEXT,
-    
-    -- Recommendations
-    recommendations JSONB, -- Structured recommendations
-    estimated_cost NUMERIC(10,2),
-    priority_score INTEGER, -- 1-10
-    
-    -- Supporting Data
-    analysis_period_start TIMESTAMPTZ,
-    analysis_period_end TIMESTAMPTZ,
-    supporting_metrics JSONB,
-    
-    -- Status Tracking
-    status VARCHAR(50) DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'implemented', 'rejected', 'archived')),
-    assigned_to VARCHAR(255),
-    
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    resolved_at TIMESTAMP
-);
+-- Keep existing alert_rules and alert_logs tables
+-- Add department-level alerts
 
-CREATE INDEX idx_optimization_reports_system ON optimization_reports(system_id);
-CREATE INDEX idx_optimization_reports_status ON optimization_reports(status);
-CREATE INDEX idx_optimization_reports_severity ON optimization_reports(severity);
-CREATE INDEX idx_optimization_reports_created ON optimization_reports(created_at DESC);
-
-COMMENT ON TABLE optimization_reports IS 'Generated optimization recommendations for systems';
-
--- ============================================================================
--- TABLES: Alerts & Monitoring
--- ============================================================================
-
--- Table: alert_rules
--- Purpose: Define threshold-based alerting rules
-CREATE TABLE alert_rules (
-    rule_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    rule_name VARCHAR(255) NOT NULL UNIQUE,
-    description TEXT,
-    
-    metric_name VARCHAR(100) NOT NULL, -- cpu_percent, ram_percent, etc.
-    condition VARCHAR(20) NOT NULL CHECK (condition IN ('>', '<', '>=', '<=', '=')),
-    threshold_value NUMERIC(10,2) NOT NULL,
-    duration_minutes INTEGER DEFAULT 5, -- Sustained for how long
-    
-    severity VARCHAR(20) NOT NULL CHECK (severity IN ('info', 'warning', 'critical')),
-    
-    is_enabled BOOLEAN DEFAULT TRUE,
-    notify_email VARCHAR(255),
-    
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX idx_alert_rules_enabled ON alert_rules(is_enabled) WHERE is_enabled = TRUE;
-
--- Table: alert_logs
--- Purpose: Log triggered alerts
-CREATE TABLE alert_logs (
-    alert_id BIGSERIAL PRIMARY KEY,
-    rule_id UUID REFERENCES alert_rules(rule_id),
-    system_id UUID REFERENCES systems(system_id),
-    
-    triggered_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    resolved_at TIMESTAMPTZ,
-    
-    metric_name VARCHAR(100),
-    actual_value NUMERIC(10,2),
+CREATE TABLE IF NOT EXISTS department_alert_rules (
+    rule_id SERIAL PRIMARY KEY,
+    dept_id INT REFERENCES departments(dept_id) ON DELETE CASCADE,
+    rule_name VARCHAR(200) NOT NULL,
+    rule_type VARCHAR(50),                     -- 'cpu', 'ram', 'disk', 'offline_systems'
     threshold_value NUMERIC(10,2),
-    severity VARCHAR(20),
-    
-    message TEXT,
-    is_acknowledged BOOLEAN DEFAULT FALSE,
-    acknowledged_by VARCHAR(255),
-    acknowledged_at TIMESTAMP,
-    
-    metadata JSONB -- Additional context
+    threshold_operator VARCHAR(10),            -- '>', '<', '>=', '<=', '='
+    affected_systems_threshold INT,            -- Alert if N systems affected
+    enabled BOOLEAN DEFAULT TRUE,
+    severity VARCHAR(20) DEFAULT 'warning',
+    notification_channels JSONB,               -- ['email', 'slack', 'sms']
+    created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_alert_logs_system ON alert_logs(system_id);
-CREATE INDEX idx_alert_logs_triggered ON alert_logs(triggered_at DESC);
-CREATE INDEX idx_alert_logs_unresolved ON alert_logs(resolved_at) WHERE resolved_at IS NULL;
-
-COMMENT ON TABLE alert_logs IS 'Log of triggered alerts and anomalies';
+COMMENT ON TABLE department_alert_rules IS 'Alert rules that apply to entire departments';
 
 -- ============================================================================
--- TABLES: Process Tracking
+-- SAMPLE DATA
 -- ============================================================================
 
--- Table: process_snapshots
--- Purpose: Store periodic snapshots of running processes
-CREATE TABLE process_snapshots (
-    snapshot_id BIGSERIAL PRIMARY KEY,
-    system_id UUID NOT NULL REFERENCES systems(system_id),
-    timestamp TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    
-    process_name VARCHAR(255),
-    process_id INTEGER,
-    user_name VARCHAR(100),
-    
-    cpu_percent NUMERIC(5,2),
-    memory_mb NUMERIC(10,2),
-    memory_percent NUMERIC(5,2),
-    
-    status VARCHAR(50), -- running, sleeping, zombie, etc.
-    num_threads INTEGER,
-    
-    command_line TEXT
-);
+-- Insert sample departments
+INSERT INTO departments (dept_name, dept_code, vlan_id, subnet_cidr, description)
+VALUES 
+    ('Information Science & Engineering', 'ISE', '30', '10.30.0.0/16', 'ISE Department Labs and Faculty'),
+    ('Computer Science & Engineering', 'CSE', '31', '10.31.0.0/16', 'CSE Department Labs and Faculty'),
+    ('Electronics & Communication', 'ECE', '32', '10.32.0.0/16', 'ECE Department Labs and Faculty')
+ON CONFLICT (dept_name) DO NOTHING;
 
-CREATE INDEX idx_process_snapshots_system_time ON process_snapshots(system_id, timestamp DESC);
-CREATE INDEX idx_process_snapshots_cpu ON process_snapshots(cpu_percent DESC);
+-- Insert default credentials (use encrypted passwords in production!)
+INSERT INTO collection_credentials (credential_name, credential_type, username, snmp_community)
+VALUES
+    ('default_snmp', 'snmp', NULL, 'public'),
+    ('lab_monitor_ssh', 'ssh', 'monitor', NULL),
+    ('lab_monitor_wmi', 'wmi', 'administrator', NULL)
+ON CONFLICT (credential_name) DO NOTHING;
 
-COMMENT ON TABLE process_snapshots IS 'Periodic snapshots of resource-intensive processes';
+-- Insert sample collection jobs
+INSERT INTO collection_jobs (job_name, job_type, dept_id, schedule_cron, schedule_description, enabled)
+SELECT 
+    dept_code || '_discovery',
+    'discovery',
+    dept_id,
+    '*/15 * * * *',
+    'Network discovery every 15 minutes',
+    TRUE
+FROM departments
+ON CONFLICT (job_name) DO NOTHING;
+
+INSERT INTO collection_jobs (job_name, job_type, dept_id, schedule_cron, schedule_description, enabled)
+SELECT 
+    dept_code || '_metrics',
+    'metrics_collection',
+    dept_id,
+    '*/5 * * * *',
+    'Metrics collection every 5 minutes',
+    TRUE
+FROM departments
+ON CONFLICT (job_name) DO NOTHING;
 
 -- ============================================================================
--- VIEWS: Common Analytics
+-- VIEWS FOR EASY QUERYING
 -- ============================================================================
 
--- View: current_system_status
--- Purpose: Real-time status of all systems with latest metrics
-CREATE VIEW current_system_status AS
+-- View: Systems with department info
+CREATE OR REPLACE VIEW v_systems_overview AS
 SELECT 
     s.system_id,
     s.hostname,
-    s.location,
+    s.ip_address::TEXT,
+    s.mac_address::TEXT,
+    d.dept_name,
+    d.dept_code,
+    s.os_type,
     s.status,
-    s.cpu_cores,
-    s.ram_total_gb,
-    s.gpu_model,
-    
-    -- Latest metrics
-    um.timestamp AS last_update,
-    um.cpu_percent,
-    um.ram_percent,
-    um.gpu_utilization,
-    um.disk_percent,
-    um.load_avg_1min,
-    
-    -- Status flags
-    CASE 
-        WHEN um.cpu_percent > 90 OR um.ram_percent > 90 THEN 'overloaded'
-        WHEN um.cpu_percent < 20 AND um.ram_percent < 20 THEN 'underutilized'
-        ELSE 'normal'
-    END AS utilization_status,
-    
-    -- Time since last seen
-    EXTRACT(EPOCH FROM (NOW() - s.last_seen))/60 AS minutes_since_seen
-    
+    s.collection_method,
+    s.last_seen,
+    EXTRACT(EPOCH FROM (NOW() - s.last_seen))/60 AS minutes_since_seen,
+    s.is_monitored
 FROM systems s
-LEFT JOIN LATERAL (
-    SELECT * FROM usage_metrics um2
-    WHERE um2.system_id = s.system_id
-    ORDER BY um2.timestamp DESC
-    LIMIT 1
-) um ON TRUE
-WHERE s.status = 'active';
+LEFT JOIN departments d USING(dept_id);
 
-COMMENT ON VIEW current_system_status IS 'Current status and latest metrics for all active systems';
+-- View: Latest metrics per system
+CREATE OR REPLACE VIEW v_latest_metrics AS
+SELECT DISTINCT ON (system_id)
+    system_id,
+    timestamp,
+    cpu_percent,
+    ram_percent,
+    disk_percent,
+    active_processes,
+    logged_in_users
+FROM usage_metrics
+ORDER BY system_id, timestamp DESC;
 
--- View: system_utilization_rankings
--- Purpose: Rank systems by utilization for optimization
-CREATE VIEW system_utilization_rankings AS
+-- View: Department statistics
+CREATE OR REPLACE VIEW v_department_stats AS
 SELECT 
-    s.hostname,
-    s.location,
-    ps.avg_cpu_percent,
-    ps.avg_ram_percent,
-    ps.avg_gpu_percent,
-    ps.utilization_score,
-    ps.is_underutilized,
-    ps.is_overutilized,
-    
-    RANK() OVER (ORDER BY ps.utilization_score DESC) as efficiency_rank
-    
-FROM systems s
-JOIN performance_summaries ps ON s.system_id = ps.system_id
-WHERE ps.period_type = 'daily'
-    AND ps.period_start >= CURRENT_DATE - INTERVAL '7 days';
+    d.dept_name,
+    COUNT(s.system_id) AS total_systems,
+    COUNT(s.system_id) FILTER (WHERE s.status = 'active') AS active_systems,
+    COUNT(s.system_id) FILTER (WHERE s.status = 'offline') AS offline_systems,
+    MAX(s.last_seen) AS last_scan_time
+FROM departments d
+LEFT JOIN systems s USING(dept_id)
+GROUP BY d.dept_id, d.dept_name;
 
 -- ============================================================================
--- FUNCTIONS: Utility & Helpers
+-- TRIGGERS & FUNCTIONS
 -- ============================================================================
 
--- Function: update_updated_at_column
--- Purpose: Automatically update updated_at timestamp
-CREATE OR REPLACE FUNCTION update_updated_at_column()
+-- Update timestamp trigger function
+CREATE OR REPLACE FUNCTION update_updated_at()
 RETURNS TRIGGER AS $$
 BEGIN
-    NEW.updated_at = CURRENT_TIMESTAMP;
+    NEW.updated_at = NOW();
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 
--- Apply to relevant tables
-CREATE TRIGGER update_systems_updated_at
+-- Apply to tables with updated_at
+CREATE TRIGGER trg_departments_updated_at
+    BEFORE UPDATE ON departments
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+CREATE TRIGGER trg_systems_updated_at
     BEFORE UPDATE ON systems
-    FOR EACH ROW
-    EXECUTE FUNCTION update_updated_at_column();
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
-CREATE TRIGGER update_optimization_reports_updated_at
-    BEFORE UPDATE ON optimization_reports
-    FOR EACH ROW
-    EXECUTE FUNCTION update_updated_at_column();
-
-CREATE TRIGGER update_alert_rules_updated_at
-    BEFORE UPDATE ON alert_rules
-    FOR EACH ROW
-    EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER trg_collection_jobs_updated_at
+    BEFORE UPDATE ON collection_jobs
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
 -- ============================================================================
--- Initial Data / Sample Records
+-- HELPER FUNCTIONS
 -- ============================================================================
 
--- Insert sample alert rules
-INSERT INTO alert_rules (rule_name, description, metric_name, condition, threshold_value, duration_minutes, severity, is_enabled)
-VALUES
-    ('High CPU Usage', 'Alert when CPU usage exceeds 95% for 10 minutes', 'cpu_percent', '>', 95, 10, 'critical', TRUE),
-    ('High RAM Usage', 'Alert when RAM usage exceeds 90% for 5 minutes', 'ram_percent', '>', 90, 5, 'warning', TRUE),
-    ('High Disk I/O Wait', 'Alert when disk I/O wait exceeds 50%', 'disk_io_wait_percent', '>', 50, 5, 'warning', TRUE),
-    ('Low Disk Space', 'Alert when disk usage exceeds 85%', 'disk_percent', '>', 85, 1, 'warning', TRUE),
-    ('GPU Overheating', 'Alert when GPU temperature exceeds 85°C', 'gpu_temp', '>', 85, 5, 'critical', TRUE);
+-- Function: Get systems in a subnet
+CREATE OR REPLACE FUNCTION get_systems_in_subnet(subnet_cidr TEXT)
+RETURNS TABLE (
+    system_id INT,
+    hostname VARCHAR,
+    ip_address TEXT,
+    status VARCHAR
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        s.system_id,
+        s.hostname,
+        s.ip_address::TEXT,
+        s.status
+    FROM systems s
+    WHERE s.ip_address <<= subnet_cidr::INET
+    ORDER BY s.ip_address;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Function: Count active systems by department
+CREATE OR REPLACE FUNCTION count_active_systems_by_dept()
+RETURNS TABLE (
+    dept_name VARCHAR,
+    active_count BIGINT,
+    total_count BIGINT
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        d.dept_name,
+        COUNT(s.system_id) FILTER (WHERE s.status = 'active'),
+        COUNT(s.system_id)
+    FROM departments d
+    LEFT JOIN systems s USING(dept_id)
+    GROUP BY d.dept_name
+    ORDER BY d.dept_name;
+END;
+$$ LANGUAGE plpgsql;
 
 -- ============================================================================
--- GRANTS & PERMISSIONS (Adjust as needed)
+-- GRANT PERMISSIONS
 -- ============================================================================
 
--- Example: Create read-only role for dashboard access
--- CREATE ROLE dashboard_readonly;
--- GRANT CONNECT ON DATABASE lab_resource_monitor TO dashboard_readonly;
--- GRANT USAGE ON SCHEMA public TO dashboard_readonly;
--- GRANT SELECT ON ALL TABLES IN SCHEMA public TO dashboard_readonly;
-
--- Example: Create write role for data collectors
--- CREATE ROLE data_collector;
--- GRANT INSERT ON usage_metrics, user_sessions, process_snapshots TO data_collector;
--- GRANT SELECT ON systems TO data_collector;
+-- In production, create specific roles:
+-- CREATE ROLE lab_monitor_collector WITH LOGIN PASSWORD 'secure_password';
+-- GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA public TO lab_monitor_collector;
+-- GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO lab_monitor_collector;
 
 -- ============================================================================
--- END OF SCHEMA
+-- COMPLETED
 -- ============================================================================
 
--- Verify schema creation
-SELECT 
-    table_name, 
-    (SELECT COUNT(*) FROM information_schema.columns WHERE table_name = t.table_name) as column_count
-FROM information_schema.tables t
-WHERE table_schema = 'public' 
-    AND table_type = 'BASE TABLE'
-ORDER BY table_name;
+COMMENT ON SCHEMA public IS 'Agentless Lab Resource Monitoring Database - Network Discovery Based';
+
+SELECT 'Schema created successfully!' AS status;

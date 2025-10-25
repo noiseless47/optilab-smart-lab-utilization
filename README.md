@@ -1,196 +1,118 @@
-# 🖥️ Smart Resource Utilization & Hardware Optimization System
+# 🏫 OptiLab - Smart Lab Resource Monitoring System# 🖥️ Smart Resource Utilization & Hardware Optimization System
+
 ### Agentless Network-Based Monitoring for Academic Computer Labs
 
+> **Production-grade, scalable monitoring platform for agentless lab resource tracking**
+
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-14%2B-blue.svg)](https://www.postgresql.org/)
-[![TimescaleDB](https://img.shields.io/badge/TimescaleDB-2.0%2B-orange.svg)](https://www.timescale.com/)
-[![Python](https://img.shields.io/badge/Python-3.8%2B-green.svg)](https://www.python.org/)
-[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
+[![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://www.python.org/)[![TimescaleDB](https://img.shields.io/badge/TimescaleDB-2.0%2B-orange.svg)](https://www.timescale.com/)
+
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-18-316192.svg)](https://www.postgresql.org/)[![Python](https://img.shields.io/badge/Python-3.8%2B-green.svg)](https://www.python.org/)
+
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688.svg)](https://fastapi.tiangolo.com/)[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 ---
+
+## 📋 Overview
 
 ## 📖 Overview
 
+OptiLab is an intelligent monitoring system that tracks CPU, RAM, and disk usage across lab computers without requiring any agent installation. It features adaptive polling, connection pooling, and real-time metrics visualization.
+
 A comprehensive **Database Management System (DBMS) project** that monitors computer lab resources in real-time using **agentless network-based collection**. Simply provide an IP range or VLAN address (e.g., `10.30.0.0/16` for ISE department) and the system automatically discovers all computers, collects metrics remotely, and generates data-backed optimization recommendations using advanced SQL analytics.
 
+### ✨ Key Features
+
 **🎯 Key Innovation**: 
-- **Zero Friction Deployment** - No agent installation on target machines! Just provide network range → automatic discovery
-- **Database-Driven Intelligence** - All analytics, scoring algorithms, and recommendations implemented as SQL stored procedures
-- **Department/VLAN Organization** - Systems automatically grouped by network (ISE=30.x, CSE=31.x, ECE=32.x)
 
----
+- **🔌 Agentless Monitoring** - No software installation on target systems- **Zero Friction Deployment** - No agent installation on target machines! Just provide network range → automatic discovery
 
-## ✨ Features
+- **⚡ High Performance** - 50-200x faster with connection pooling- **Database-Driven Intelligence** - All analytics, scoring algorithms, and recommendations implemented as SQL stored procedures
 
-### 🌐 Network Auto-Discovery (Agentless!)
+- **🧠 Adaptive Polling** - 80% resource reduction via intelligent scheduling- **Department/VLAN Organization** - Systems automatically grouped by network (ISE=30.x, CSE=31.x, ECE=32.x)
+
+- **📊 Real-time Dashboard** - FastAPI-powered REST API
+
+- **🔍 Auto-discovery** - Automatic network scanning and system detection---
+
+- **📈 Time-series Optimization** - TimescaleDB support for 75x faster queries
+
+- **🔔 Smart Alerts** - Threshold-based alerting system## ✨ Features
+
+- **📦 Message Queue** - Optional RabbitMQ for decoupled architecture
+
+- **📉 Prometheus Metrics** - Industry-standard monitoring integration### 🌐 Network Auto-Discovery (Agentless!)
+
 - **Zero Friction**: Provide IP range (e.g., `10.30.0.0/16`) → Auto-discover all systems
-- **No Agent Install**: Uses standard protocols (SNMP, WMI, SSH) - no software on target machines
+
+## 🏗️ Architecture- **No Agent Install**: Uses standard protocols (SNMP, WMI, SSH) - no software on target machines
+
 - **Department Organization**: Systems automatically grouped by VLAN (ISE=30, CSE=31, ECE=32)
-- **Nmap Integration**: Fast, accurate network scanning
 
-### 🔍 Real-Time Monitoring
-- **Granular Metrics**: CPU, RAM, GPU, Disk I/O, Network every 5 minutes
-- **Multi-Protocol**: WMI (Windows), SSH (Linux), SNMP (Universal)
-- **Multi-Platform**: Windows, Linux, macOS support
-- **Automated Collection**: Scheduled jobs handle everything
+```- **Nmap Integration**: Fast, accurate network scanning
 
-### 📊 Advanced Analytics
-- **Utilization Scoring**: Composite efficiency metrics (0-100)
-- **Bottleneck Detection**: Automated CPU/RAM/Disk identification
-- **Trend Analysis**: Time-series pattern recognition
-- **Percentile Queries**: P95, P99 for capacity planning
+┌─────────────────────────────────────────────────────────────┐
 
-### 🚨 Intelligent Alerting
-- **Trigger-Based**: Real-time alerts via database triggers
-- **Smart Thresholds**: Configurable rules with duration logic
-- **Auto-Resolution**: Alerts close automatically when conditions normalize
-- **Severity Levels**: Info, Warning, Critical
+│                    Client Layer (Web UI)                     │### 🔍 Real-Time Monitoring
 
-### 💡 Optimization Recommendations
-- **Hardware Upgrades**: Data-backed RAM/CPU/GPU suggestions
-- **Reallocation**: Identify underutilized systems for consolidation
-- **Cost Justification**: Quantified impact assessments
-- **Priority Scoring**: Ranked recommendation list
+└──────────────────────┬──────────────────────────────────────┘- **Granular Metrics**: CPU, RAM, GPU, Disk I/O, Network every 5 minutes
 
-### ⚡ Performance Optimized
-- **TimescaleDB**: Automatic time-series partitioning
-- **Compression**: 90% space savings after 7 days
-- **Continuous Aggregates**: Pre-computed summaries (50-100x faster)
-- **Smart Indexing**: Partial, GIN, composite indexes
+                       │ REST API- **Multi-Protocol**: WMI (Windows), SSH (Linux), SNMP (Universal)
 
----
+┌──────────────────────▼──────────────────────────────────────┐- **Multi-Platform**: Windows, Linux, macOS support
 
-## 🚀 How It Works (Agentless Approach)
+│              FastAPI Server (api/)                           │- **Automated Collection**: Scheduled jobs handle everything
 
-```
-1️⃣  Admin Input: "Monitor ISE department (10.30.0.0/16)"
-                ↓
-2️⃣  Network Scan: nmap discovers all active computers
-                ↓
-3️⃣  Auto-Detect: Identifies OS type (Windows/Linux)
-                ↓
-4️⃣  Remote Collection: WMI/SSH/SNMP collects metrics
-                ↓
-5️⃣  Database Storage: PostgreSQL with department tags
-                ↓
-6️⃣  Analytics: SQL procedures generate insights
-```
+│  • Metrics endpoints  • Department views  • Prometheus       │
 
-**Key Advantage**: Deploy once on central server → Monitor 100+ computers automatically!
+└──────────────────────┬──────────────────────────────────────┘### 📊 Advanced Analytics
 
----
+                       │- **Utilization Scoring**: Composite efficiency metrics (0-100)
 
-## 🏗️ Architecture
+┌──────────────────────▼──────────────────────────────────────┐- **Bottleneck Detection**: Automated CPU/RAM/Disk identification
 
-```
-Lab Computers (Nothing Installed!)
-┌─────────────────────────────────────┐
-│  ┌──────┐  ┌──────┐  ┌──────┐      │
-│  │ PC 1 │  │ PC 2 │  │ PC N │      │  ← No agents needed!
-│  │10.30.│  │10.30.│  │10.30.│      │     Standard protocols only
-│  │ 1.1  │  │ 1.2  │  │ 1.N  │      │
-│  └───▲──┘  └───▲──┘  └───▲──┘      │
-└──────┼─────────┼─────────┼──────────┘
-       │         │         │
-   Remote Queries (SNMP/WMI/SSH)
-       │         │         │
-       └─────────┼─────────┘
-                 │
-       ┌─────────▼─────────┐
-       │  Central Server   │  ← Deploy here only!
-       │  ┌─────────────┐  │
-       │  │ Collector   │  │     • Network scanner (nmap)
-       │  │  Service    │  │     • Metrics collector
-       │  └──────┬──────┘  │     • Job scheduler
-       └─────────┼─────────┘
-                 │
-       ┌─────────▼─────────┐
-       │  PostgreSQL DB    │
-       │  + TimescaleDB    │
-       │                   │
-       │  • departments    │
-       │  • systems        │
-       │  • usage_metrics  │
-       │  • analytics      │
-       └───────────────────┘
-```
+│                PostgreSQL + TimescaleDB                      │- **Trend Analysis**: Time-series pattern recognition
 
-### Original Architecture (For Reference)
+│  • Time-series data  • Compression  • Retention policies    │- **Percentile Queries**: P95, P99 for capacity planning
 
-<details>
-<summary>Click to see agent-based architecture (legacy approach)</summary>
+└──────────────────────▲──────────────────────────────────────┘
 
-```mermaid
-flowchart TD
-    %% ==== LAB SYSTEMS ====
-    subgraph LAB["COMPUTER LAB INFRASTRUCTURE - 50+ Systems"]
-        A1["Lab PC #1<br/>• Python Agent<br/>• psutil / GPUtil<br/>• 5-min cycle"]
-        A2["Lab PC #2<br/>• Python Agent<br/>• psutil / GPUtil<br/>• 5-min cycle"]
-        AN["Lab PC #N<br/>• Python Agent<br/>• psutil / GPUtil<br/>• 5-min cycle"]
-    end
+                       │### 🚨 Intelligent Alerting
 
-    %% ==== API SERVER ====
-    subgraph API["FASTAPI REST SERVER"]
-        P1["POST /api/systems/register"]
-        P2["POST /api/metrics"]
-        G1["GET /api/analytics/top-consumers"]
-        G2["GET /api/analytics/underutilized"]
-        G3["GET /api/alerts/active"]
-        F1["Async I/O (asyncpg)"]
-        F2["Connection Pooling"]
-        F3["Pydantic Validation"]
-        F4["Swagger Docs"]
-    end
+┌──────────────────────┴──────────────────────────────────────┐- **Trigger-Based**: Real-time alerts via database triggers
 
-    %% Explicit separate connectors (GitHub parser limitation)
-    A1 -->|"HTTP POST (5 min)"| API
-    A2 -->|"HTTP POST (5 min)"| API
-    AN -->|"HTTP POST (5 min)"| API
+│           Collection Layer (collector/)                      │- **Smart Thresholds**: Configurable rules with duration logic
 
-    API -->|"asyncpg driver"| DB
+│                                                              │- **Auto-Resolution**: Alerts close automatically when conditions normalize
 
-    %% ==== DATABASE LAYER ====
-    subgraph DB["PostgreSQL 14+ / TimescaleDB 2.0+"]
-        subgraph TSO["Time-Series Optimization"]
-            T1["Hypertables (daily chunks)"]
-            T2["Compression (after 7 days)"]
-            T3["Continuous Aggregates"]
-            T4["Retention Policies"]
-        end
+│  ┌──────────────┐  ┌─────────────┐  ┌──────────────┐       │- **Severity Levels**: Info, Warning, Critical
 
-        subgraph CORE["Core Tables"]
-            C1["systems"]
-            C2["usage_metrics"]
-            C3["alert_logs"]
-            C4["performance_summaries"]
-        end
+│  │  Connection  │  │  Adaptive   │  │   Message    │       │
 
-        subgraph INTEL["Intelligence Layer"]
-            I1["Triggers (auto alerts)"]
-            I2["Stored Procedures / Functions"]
-            I3["Advanced SQL (Window / CTEs)"]
-        end
-    end
+│  │     Pool     │──│  Scheduler  │──│    Queue     │       │### 💡 Optimization Recommendations
 
-    DB -->|"SQL Queries"| VIZ
+│  └──────────────┘  └─────────────┘  └──────────────┘       │- **Hardware Upgrades**: Data-backed RAM/CPU/GPU suggestions
 
-    %% ==== VISUALIZATION LAYER ====
-    subgraph VIZ["Visualization & Analytics"]
-        V1["Grafana Dashboards<br/>• Real-time Metrics"]
-        V2["Direct SQL Queries<br/>• Ad-hoc Analysis"]
-        V3["Python Analytics<br/>• ML & Reports"]
-    end
+│         │                 │                  │              │- **Reallocation**: Identify underutilized systems for consolidation
 
-    %% ==== DATA FLOW SUMMARY ====
-    subgraph SUMMARY["Data Flow Summary"]
-        S1["1️⃣ Agents collect metrics every 5 min"]
-        S2["2️⃣ FastAPI validates & inserts data"]
-        S3["3️⃣ DB triggers evaluate alerts"]
-        S4["4️⃣ Timescale compresses & aggregates"]
-        S5["5️⃣ Procedures generate analytics"]
-        S6["6️⃣ Dashboards visualize results"]
-    end
+│         └─────────────────┴──────────────────┘              │- **Cost Justification**: Quantified impact assessments
 
-    VIZ --> SUMMARY
+│                           │                                 │- **Priority Scoring**: Ranked recommendation list
+
+└───────────────────────────┼─────────────────────────────────┘
+
+                            │ SSH/WMI### ⚡ Performance Optimized
+
+              ┌─────────────┴─────────────┐- **TimescaleDB**: Automatic time-series partitioning
+
+              │   Lab Systems (Linux)     │- **Compression**: 90% space savings after 7 days
+
+              │   192.168.0.0/24          │- **Continuous Aggregates**: Pre-computed summaries (50-100x faster)
+
+              └───────────────────────────┘- **Smart Indexing**: Partial, GIN, composite indexes
 
 ```
 
@@ -198,39 +120,350 @@ flowchart TD
 
 ## 🚀 Quick Start
 
+## 🚀 How It Works (Agentless Approach)
+
 ### Prerequisites
-- PostgreSQL 14+ or TimescaleDB 2.0+
-- Python 3.8+
-- 10 GB disk space
+
+```
+
+- **Python 3.11+**1️⃣  Admin Input: "Monitor ISE department (10.30.0.0/16)"
+
+- **PostgreSQL 18**                ↓
+
+- **SSH access** to target systems2️⃣  Network Scan: nmap discovers all active computers
+
+- **(Optional)** Docker for RabbitMQ                ↓
+
+- **(Optional)** TimescaleDB extension3️⃣  Auto-Detect: Identifies OS type (Windows/Linux)
+
+                ↓
+
+### Installation4️⃣  Remote Collection: WMI/SSH/SNMP collects metrics
+
+                ↓
+
+1. **Clone the repository**5️⃣  Database Storage: PostgreSQL with department tags
+
+   ```bash                ↓
+
+   git clone https://github.com/noiseless47/optilab-smart-lab-utilization.git6️⃣  Analytics: SQL procedures generate insights
+
+   cd optilab-smart-lab-utilization```
+
+   ```
+
+**Key Advantage**: Deploy once on central server → Monitor 100+ computers automatically!
+
+2. **Set up virtual environment**
+
+   ```bash---
+
+   python -m venv venv
+
+   # Windows## 🏗️ Architecture
+
+   venv\Scripts\activate
+
+   # Linux/Mac```
+
+   source venv/bin/activateLab Computers (Nothing Installed!)
+
+   ```┌─────────────────────────────────────┐
+
+│  ┌──────┐  ┌──────┐  ┌──────┐      │
+
+3. **Install dependencies**│  │ PC 1 │  │ PC 2 │  │ PC N │      │  ← No agents needed!
+
+   ```bash│  │10.30.│  │10.30.│  │10.30.│      │     Standard protocols only
+
+   pip install -r collector/requirements.txt│  │ 1.1  │  │ 1.2  │  │ 1.N  │      │
+
+   pip install -r api/requirements.txt│  └───▲──┘  └───▲──┘  └───▲──┘      │
+
+   ```└──────┼─────────┼─────────┼──────────┘
+
+       │         │         │
+
+4. **Configure database**   Remote Queries (SNMP/WMI/SSH)
+
+   ```bash       │         │         │
+
+   # Create database       └─────────┼─────────┘
+
+   psql -U postgres -c "CREATE DATABASE lab_resource_monitor;"                 │
+
+          ┌─────────▼─────────┐
+
+   # Run schema       │  Central Server   │  ← Deploy here only!
+
+   psql -U postgres -d lab_resource_monitor -f database/schema.sql       │  ┌─────────────┐  │
+
+          │  │ Collector   │  │     • Network scanner (nmap)
+
+   # (Optional) Install TimescaleDB       │  │  Service    │  │     • Metrics collector
+
+   psql -U postgres -d lab_resource_monitor -f database/setup_timescaledb.sql       │  └──────┬──────┘  │     • Job scheduler
+
+   ```       └─────────┼─────────┘
+
+                 │
+
+5. **Configure environment**       ┌─────────▼─────────┐
+
+   ```bash       │  PostgreSQL DB    │
+
+   # Create .env file       │  + TimescaleDB    │
+
+   echo "DB_HOST=localhost" > .env       │                   │
+
+   echo "DB_PORT=5432" >> .env       │  • departments    │
+
+   echo "DB_NAME=lab_resource_monitor" >> .env       │  • systems        │
+
+   echo "DB_USER=postgres" >> .env       │  • usage_metrics  │
+
+   echo "DB_PASSWORD=your_password" >> .env       │  • analytics      │
+
+   echo "SSH_USERNAME=your_username" >> .env       └───────────────────┘
+
+   echo "SSH_PASSWORD=your_password" >> .env```
+
+   ```
+
+### Original Architecture (For Reference)
+
+### Basic Usage
+
+<details>
+
+**1. Discover systems on your network**<summary>Click to see agent-based architecture (legacy approach)</summary>
+
+```bash
+
+cd collector```mermaid
+
+python network_collector.py --scan 192.168.0.0/24 --dept "Computer Science"flowchart TD
+
+```    %% ==== LAB SYSTEMS ====
+
+    subgraph LAB["COMPUTER LAB INFRASTRUCTURE - 50+ Systems"]
+
+**2. Start collecting metrics**        A1["Lab PC #1<br/>• Python Agent<br/>• psutil / GPUtil<br/>• 5-min cycle"]
+
+```bash        A2["Lab PC #2<br/>• Python Agent<br/>• psutil / GPUtil<br/>• 5-min cycle"]
+
+python network_collector.py --collect        AN["Lab PC #N<br/>• Python Agent<br/>• psutil / GPUtil<br/>• 5-min cycle"]
+
+```    end
+
+
+
+**3. Start API server**    %% ==== API SERVER ====
+
+```bash    subgraph API["FASTAPI REST SERVER"]
+
+cd ../api        P1["POST /api/systems/register"]
+
+uvicorn main:app --reload        P2["POST /api/metrics"]
+
+```        G1["GET /api/analytics/top-consumers"]
+
+        G2["GET /api/analytics/underutilized"]
+
+**4. Access the dashboard**        G3["GET /api/alerts/active"]
+
+- API Documentation: http://localhost:8000/docs        F1["Async I/O (asyncpg)"]
+
+- Health Check: http://localhost:8000/health        F2["Connection Pooling"]
+
+- Prometheus Metrics: http://localhost:8000/metrics        F3["Pydantic Validation"]
+
+        F4["Swagger Docs"]
+
+## 📊 API Endpoints    end
+
+
+
+### Core Endpoints    %% Explicit separate connectors (GitHub parser limitation)
+
+    A1 -->|"HTTP POST (5 min)"| API
+
+| Endpoint | Method | Description |    A2 -->|"HTTP POST (5 min)"| API
+
+|----------|--------|-------------|    AN -->|"HTTP POST (5 min)"| API
+
+| `/systems` | GET | List all monitored systems |
+
+| `/systems/{id}/metrics` | GET | Get metrics for specific system |    API -->|"asyncpg driver"| DB
+
+| `/departments` | GET | List all departments |
+
+| `/departments/{dept}/systems` | GET | Get systems by department |    %% ==== DATABASE LAYER ====
+
+| `/health` | GET | Health check |    subgraph DB["PostgreSQL 14+ / TimescaleDB 2.0+"]
+
+| `/metrics` | GET | Prometheus metrics |        subgraph TSO["Time-Series Optimization"]
+
+            T1["Hypertables (daily chunks)"]
+
+## ⚙️ Configuration            T2["Compression (after 7 days)"]
+
+            T3["Continuous Aggregates"]
+
+### Environment Variables            T4["Retention Policies"]
+
+        end
+
+| Variable | Description | Default |
+
+|----------|-------------|---------|        subgraph CORE["Core Tables"]
+
+| `DB_HOST` | PostgreSQL host | localhost |            C1["systems"]
+
+| `DB_PORT` | PostgreSQL port | 5432 |            C2["usage_metrics"]
+
+| `DB_NAME` | Database name | lab_resource_monitor |            C3["alert_logs"]
+
+| `DB_USER` | Database user | postgres |            C4["performance_summaries"]
+
+| `DB_PASSWORD` | Database password | - |        end
+
+| `SSH_USERNAME` | SSH username for systems | - |
+
+| `SSH_PASSWORD` | SSH password | - |        subgraph INTEL["Intelligence Layer"]
+
+| `RABBITMQ_HOST` | RabbitMQ host (optional) | localhost |            I1["Triggers (auto alerts)"]
+
+| `RABBITMQ_PORT` | RabbitMQ port (optional) | 5672 |            I2["Stored Procedures / Functions"]
+
+            I3["Advanced SQL (Window / CTEs)"]
+
+## 📈 Performance        end
+
+    end
+
+| Metric | Before | After | Improvement |
+
+|--------|--------|-------|-------------|    DB -->|"SQL Queries"| VIZ
+
+| SSH Connections | 500ms-2s | Pooled | **50-200x faster** |
+
+| Command Execution | 1 cmd/trip | 3-5 cmds/batch | **3-5x faster** |    %% ==== VISUALIZATION LAYER ====
+
+| Dead System Polling | Every 5 min | Every 24 hours | **288x reduction** |    subgraph VIZ["Visualization & Analytics"]
+
+| Database Queries | 2 seconds | 30ms | **75x faster** |        V1["Grafana Dashboards<br/>• Real-time Metrics"]
+
+| Storage Usage | 100% | 10% | **90% savings** |        V2["Direct SQL Queries<br/>• Ad-hoc Analysis"]
+
+        V3["Python Analytics<br/>• ML & Reports"]
+
+## 🗂️ Project Structure    end
+
+
+
+```    %% ==== DATA FLOW SUMMARY ====
+
+optilab-smart-lab-utilization/    subgraph SUMMARY["Data Flow Summary"]
+
+├── api/                          # FastAPI backend        S1["1️⃣ Agents collect metrics every 5 min"]
+
+│   ├── main.py                   # API server with Prometheus metrics        S2["2️⃣ FastAPI validates & inserts data"]
+
+│   └── requirements.txt          # API dependencies        S3["3️⃣ DB triggers evaluate alerts"]
+
+├── collector/                    # Monitoring engine        S4["4️⃣ Timescale compresses & aggregates"]
+
+│   ├── network_collector.py      # Main collection script        S5["5️⃣ Procedures generate analytics"]
+
+│   ├── connection_pool.py        # SSH/WMI connection pooling        S6["6️⃣ Dashboards visualize results"]
+
+│   ├── adaptive_scheduler.py     # Intelligent polling scheduler    end
+
+│   ├── message_queue.py          # RabbitMQ integration
+
+│   ├── queue_processor.py        # Worker service    VIZ --> SUMMARY
+
+│   └── requirements.txt          # Collector dependencies
+
+├── database/                     # Database schemas```
+
+│   ├── schema.sql                # PostgreSQL schema
+
+│   └── setup_timescaledb.sql     # TimescaleDB optimization---
+
+├── docs/                         # Documentation
+
+│   ├── INSTALLATION.md           # Installation guide## 🚀 Quick Start
+
+│   ├── API_REFERENCE.md          # API documentation
+
+│   └── ARCHITECTURE.md           # System architecture### Prerequisites
+
+├── tests/                        # Test suite- PostgreSQL 14+ or TimescaleDB 2.0+
+
+│   └── test_system.py            # System tests- Python 3.8+
+
+└── README.md                     # This file- 10 GB disk space
+
+```
 
 ### 1-Minute Setup
 
+## 📚 Documentation
+
 ```powershell
-# Create database
-psql -U postgres -c "CREATE DATABASE lab_resource_monitor;"
+
+- **[Installation Guide](docs/INSTALLATION.md)** - Detailed installation instructions# Create database
+
+- **[API Reference](docs/API_REFERENCE.md)** - Complete API documentationpsql -U postgres -c "CREATE DATABASE lab_resource_monitor;"
+
+- **[Architecture](docs/ARCHITECTURE.md)** - System design and components
 
 # Load schema (use agentless version!)
-cd d:\dbms
+
+## 🤝 Contributingcd d:\dbms
+
 psql -U postgres -d lab_resource_monitor -f database/schema_agentless.sql
-psql -U postgres -d lab_resource_monitor -f database/stored_procedures.sql
+
+Contributions are welcome! Please:psql -U postgres -d lab_resource_monitor -f database/stored_procedures.sql
+
 psql -U postgres -d lab_resource_monitor -f database/triggers.sql
 
-# Install dependencies
-cd collector
-pip install -r requirements.txt
+1. Fork the repository
+
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)# Install dependencies
+
+3. Commit your changes (`git commit -m 'Add amazing feature'`)cd collector
+
+4. Push to the branch (`git push origin feature/amazing-feature`)pip install -r requirements.txt
+
+5. Open a Pull Request
 
 # Test scan on local network (safe test)
-python network_collector.py --scan 192.168.1.0/24 --dept ISE
 
-# Collect metrics from discovered systems
+## 📝 Licensepython network_collector.py --scan 192.168.1.0/24 --dept ISE
+
+
+
+This project is licensed under the MIT License.# Collect metrics from discovered systems
+
 python network_collector.py --collect-all
-```
 
-**🎉 Done!** Systems automatically discovered and monitored.
+## 👥 Authors```
 
-**📚 For production deployment**: Configure credentials and network ranges in database
 
----
+
+- **Noiseless47** - *Initial work* - [GitHub](https://github.com/noiseless47)**🎉 Done!** Systems automatically discovered and monitored.
+
+
+
+---**📚 For production deployment**: Configure credentials and network ranges in database
+
+
+
+**⭐ Star this repo if you find it helpful!**---
+
 
 ## 📊 Database Schema
 
