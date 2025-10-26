@@ -443,15 +443,15 @@ This project is licensed under the MIT License - see [LICENSE](LICENSE) file for
 
 ## 👨‍💻 Author
 
-**DBMS Project Team**  
-Academic Year: 2024-2025  
-Computer Science Department
+**Aayush Pandey and Asish Kumar Yeleti**  
+Academic Year: 2025-2026  
+Information Science Department
 
 ---
 
 ## 🙏 Acknowledgments
 
-- **Network Administrator** (Unmesh sir) - For agentless architecture requirements
+- **Network Administrator** - For agentless architecture requirements
 - PostgreSQL Development Group - Native network type support
 - TimescaleDB Team - Time-series optimization
 - nmap Project - Network discovery foundation
