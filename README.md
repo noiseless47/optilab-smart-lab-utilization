@@ -84,13 +84,13 @@ A comprehensive **Database Management System (DBMS) project** that monitors comp
 
 ```
 Lab Computers (Nothing Installed!)
-┌────────────────────────────────────┐
-│  ┌──────┐  ┌──────┐  ┌──────┐      │
-│  │ PC 1 │  │ PC 2 │  │ PC N │      │  ← No agents needed!
-│  │10.30.│  │10.30.│  │10.30.│      │     Standard protocols only
-│  │ 1.1  │  │ 1.2  │  │ 1.N  │      │
-│  └───▲──┘  └───▲──┘  └───▲──┘      │
-└──────┼─────────┼─────────┼─────────┘
+┌────────────────────────────────┐
+│  ┌──────┐  ┌──────┐  ┌──────┐  │
+│  │ PC 1 │  │ PC 2 │  │ PC N │  │  ← No agents needed!
+│  │10.30.│  │10.30.│  │10.30.│  │     Standard protocols only
+│  │ 1.1  │  │ 1.2  │  │ 1.N  │  │
+│  └───▲──┘  └───▲──┘  └───▲──┘  │
+└──────┼─────────┼─────────┼─────┘
        │         │         │
    Remote Queries (SNMP/WMI/SSH)
        │         │         │
