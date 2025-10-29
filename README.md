@@ -457,13 +457,6 @@ Information Science Department
 - nmap Project - Network discovery foundation
 - Academic advisors and instructors
 
----
-
-## ⭐ Star This Project!
-
-If this project helped you learn DBMS concepts or solve a real-world problem, please give it a star! ⭐
-
----
 
 **Project Status**: ✅ **COMPLETE & PRODUCTION-READY**  
 **Last Updated**: October 2025  
