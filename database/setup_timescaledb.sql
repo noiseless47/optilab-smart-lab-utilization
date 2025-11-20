@@ -82,65 +82,72 @@ SELECT * FROM timescaledb_information.jobs
 WHERE proc_name LIKE '%retention%';
 
 -- ============================================================================
--- Create Continuous Aggregates (for faster queries)
+-- Create Continuous Aggregates for Performance
 -- ============================================================================
 
--- Hourly aggregates (keep for 1 year)
-CREATE MATERIALIZED VIEW IF NOT EXISTS metrics_hourly
+-- Hourly Performance Summaries
+CREATE MATERIALIZED VIEW IF NOT EXISTS hourly_performance_stats
 WITH (timescaledb.continuous) AS
-SELECT 
+SELECT
     system_id,
-    time_bucket('1 hour', timestamp) AS bucket,
-    AVG(cpu_percent) AS avg_cpu,
-    MAX(cpu_percent) AS max_cpu,
-    AVG(ram_percent) AS avg_ram,
-    MAX(ram_percent) AS max_ram,
-    AVG(disk_percent) AS avg_disk,
-    MAX(disk_percent) AS max_disk,
-    COUNT(*) AS sample_count
+    time_bucket('1 hour', timestamp) AS hour_bucket,
+    AVG(cpu_percent) AS avg_cpu_percent,
+    MAX(cpu_percent) AS max_cpu_percent,
+    MIN(cpu_percent) AS min_cpu_percent,
+    PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY cpu_percent) AS p95_cpu_percent,
+    AVG(ram_percent) AS avg_ram_percent,
+    MAX(ram_percent) AS max_ram_percent,
+    PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY ram_percent) AS p95_ram_percent,
+    AVG(gpu_percent) AS avg_gpu_percent,
+    MAX(gpu_percent) AS max_gpu_percent,
+    AVG(disk_percent) AS avg_disk_percent,
+    MAX(disk_percent) AS max_disk_percent,
+    COUNT(*) AS metric_count
 FROM metrics
-GROUP BY system_id, bucket;
+GROUP BY system_id, hour_bucket;
 
--- Add refresh policy (update every hour)
-SELECT add_continuous_aggregate_policy(
-    'metrics_hourly',
+-- Add refresh policy (refresh every hour, covering last 2 hours)
+SELECT add_continuous_aggregate_policy('hourly_performance_stats',
     start_offset => INTERVAL '2 hours',
     end_offset => INTERVAL '1 hour',
     schedule_interval => INTERVAL '1 hour',
-    if_not_exists => TRUE
-);
+    if_not_exists => TRUE);
 
--- Daily aggregates (keep for 2 years)
-CREATE MATERIALIZED VIEW IF NOT EXISTS metrics_daily
+-- Daily Performance Summaries
+CREATE MATERIALIZED VIEW IF NOT EXISTS daily_performance_stats
 WITH (timescaledb.continuous) AS
-SELECT 
+SELECT
     system_id,
-    time_bucket('1 day', timestamp) AS bucket,
-    AVG(cpu_percent) AS avg_cpu,
-    MAX(cpu_percent) AS max_cpu,
-    AVG(ram_percent) AS avg_ram,
-    MAX(ram_percent) AS max_ram,
-    AVG(disk_percent) AS avg_disk,
-    MAX(disk_percent) AS max_disk,
-    COUNT(*) AS sample_count
+    time_bucket('1 day', timestamp) AS day_bucket,
+    AVG(cpu_percent) AS avg_cpu_percent,
+    MAX(cpu_percent) AS max_cpu_percent,
+    PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY cpu_percent) AS p95_cpu_percent,
+    SUM(CASE WHEN cpu_percent > 80 THEN 1 ELSE 0 END) * 5 AS cpu_above_80_minutes,
+    AVG(ram_percent) AS avg_ram_percent,
+    MAX(ram_percent) AS max_ram_percent,
+    PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY ram_percent) AS p95_ram_percent,
+    SUM(CASE WHEN ram_percent > 80 THEN 1 ELSE 0 END) * 5 AS ram_above_80_minutes,
+    AVG(gpu_percent) AS avg_gpu_percent,
+    MAX(gpu_percent) AS max_gpu_percent,
+    AVG(disk_percent) AS avg_disk_percent,
+    MAX(disk_percent) AS max_disk_percent,
+    COUNT(*) AS metric_count
 FROM metrics
-GROUP BY system_id, bucket;
+GROUP BY system_id, day_bucket;
 
--- Add refresh policy (update daily)
-SELECT add_continuous_aggregate_policy(
-    'metrics_daily',
+-- Add refresh policy (refresh daily, covering last 2 days)
+SELECT add_continuous_aggregate_policy('daily_performance_stats',
     start_offset => INTERVAL '2 days',
     end_offset => INTERVAL '1 day',
     schedule_interval => INTERVAL '1 day',
-    if_not_exists => TRUE
-);
+    if_not_exists => TRUE);
 
 -- ============================================================================
 -- Query Examples
 -- ============================================================================
 
 -- Query latest metrics (uses hypertable)
-SELECT 
+SELECT
     s.hostname,
     m.timestamp,
     m.cpu_percent,
@@ -155,28 +162,29 @@ JOIN LATERAL (
 ) m ON TRUE
 LIMIT 10;
 
--- Query hourly averages (uses continuous aggregate - MUCH faster!)
-SELECT 
-    bucket,
-    avg_cpu,
-    avg_ram,
-    sample_count
-FROM metrics_hourly
+-- Query hourly performance stats (uses continuous aggregate - MUCH faster!)
+SELECT
+    hour_bucket,
+    avg_cpu_percent,
+    max_cpu_percent,
+    p95_cpu_percent,
+    metric_count
+FROM hourly_performance_stats
 WHERE system_id = 1
-  AND bucket >= NOW() - INTERVAL '24 hours'
-ORDER BY bucket DESC;
+  AND hour_bucket >= NOW() - INTERVAL '24 hours'
+ORDER BY hour_bucket DESC;
 
--- Query daily trends (uses continuous aggregate)
-SELECT 
-    bucket::DATE as date,
-    avg_cpu,
-    max_cpu,
-    avg_ram,
-    max_ram
-FROM metrics_daily
+-- Query daily performance trends (uses continuous aggregate)
+SELECT
+    day_bucket::DATE as date,
+    avg_cpu_percent,
+    max_cpu_percent,
+    p95_cpu_percent,
+    cpu_above_80_minutes
+FROM daily_performance_stats
 WHERE system_id = 1
-  AND bucket >= NOW() - INTERVAL '30 days'
-ORDER BY bucket DESC;
+  AND day_bucket >= NOW() - INTERVAL '30 days'
+ORDER BY day_bucket DESC;
 
 -- ============================================================================
 -- Monitoring & Statistics
@@ -223,15 +231,15 @@ ORDER BY job_id;
 -- SELECT AVG(cpu_percent) FROM metrics WHERE timestamp > NOW() - INTERVAL '7 days';
 
 -- With TimescaleDB + Continuous Aggregate (20-100x faster):
--- SELECT AVG(avg_cpu) FROM metrics_hourly WHERE bucket > NOW() - INTERVAL '7 days';
+-- SELECT AVG(avg_cpu_percent) FROM hourly_performance_stats WHERE hour_bucket > NOW() - INTERVAL '7 days';
 
 -- ============================================================================
 -- Cleanup (if needed)
 -- ============================================================================
 
 -- Drop continuous aggregates
--- DROP MATERIALIZED VIEW IF EXISTS metrics_hourly CASCADE;
--- DROP MATERIALIZED VIEW IF EXISTS metrics_daily CASCADE;
+-- DROP MATERIALIZED VIEW IF EXISTS hourly_performance_stats CASCADE;
+-- DROP MATERIALIZED VIEW IF EXISTS daily_performance_stats CASCADE;
 
 -- Remove policies
 -- SELECT remove_compression_policy('metrics', if_exists => TRUE);

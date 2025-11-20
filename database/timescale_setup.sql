@@ -36,47 +36,6 @@ SELECT add_compression_policy('metrics', INTERVAL '7 days');
 -- Automatically drop data older than 1 year
 SELECT add_retention_policy('metrics', INTERVAL '1 year');
 
--- ============================================================================
--- Convert alert_logs to Hypertable
--- ============================================================================
-
-SELECT create_hypertable(
-    'alert_logs',
-    'triggered_at',
-    chunk_time_interval => INTERVAL '7 days',
-    if_not_exists => TRUE,
-    migrate_data => TRUE
-);
-
-ALTER TABLE alert_logs SET (
-    timescaledb.compress,
-    timescaledb.compress_segmentby = 'system_id',
-    timescaledb.compress_orderby = 'triggered_at DESC'
-);
-
-SELECT add_compression_policy('alert_logs', INTERVAL '30 days');
-SELECT add_retention_policy('alert_logs', INTERVAL '2 years');
-
--- ============================================================================
--- Convert process_snapshots to Hypertable
--- ============================================================================
-
-SELECT create_hypertable(
-    'process_snapshots',
-    'timestamp',
-    chunk_time_interval => INTERVAL '1 day',
-    if_not_exists => TRUE,
-    migrate_data => TRUE
-);
-
-ALTER TABLE process_snapshots SET (
-    timescaledb.compress,
-    timescaledb.compress_segmentby = 'system_id',
-    timescaledb.compress_orderby = 'timestamp DESC'
-);
-
-SELECT add_compression_policy('process_snapshots', INTERVAL '14 days');
-SELECT add_retention_policy('process_snapshots', INTERVAL '90 days');
 
 -- ============================================================================
 -- Continuous Aggregates for Performance
@@ -185,52 +144,21 @@ SELECT add_continuous_aggregate_policy('daily_performance_stats',
 -- Optimize Continuous Aggregates
 -- ============================================================================
 
--- Enable compression for continuous aggregates
-ALTER MATERIALIZED VIEW hourly_performance_stats SET (
-    timescaledb.compress,
-    timescaledb.compress_segmentby = 'system_id',
-    timescaledb.compress_orderby = 'hour_bucket DESC'
-);
+-- Enable compression for continuous aggregates (optional - for very large datasets)
+-- ALTER MATERIALIZED VIEW hourly_performance_stats SET (
+--     timescaledb.compress,
+--     timescaledb.compress_segmentby = 'system_id',
+--     timescaledb.compress_orderby = 'hour_bucket DESC'
+-- );
+-- SELECT add_compression_policy('hourly_performance_stats', INTERVAL '90 days');
 
-SELECT add_compression_policy('hourly_performance_stats', INTERVAL '30 days');
+-- ALTER MATERIALIZED VIEW daily_performance_stats SET (
+--     timescaledb.compress,
+--     timescaledb.compress_segmentby = 'system_id',
+--     timescaledb.compress_orderby = 'day_bucket DESC'
+-- );
+-- SELECT add_compression_policy('daily_performance_stats', INTERVAL '1 year');
 
-ALTER MATERIALIZED VIEW daily_performance_stats SET (
-    timescaledb.compress,
-    timescaledb.compress_segmentby = 'system_id',
-    timescaledb.compress_orderby = 'day_bucket DESC'
-);
-
-SELECT add_compression_policy('daily_performance_stats', INTERVAL '90 days');
-
--- ============================================================================
--- Helpful TimescaleDB Views
--- ============================================================================
-
--- View to check hypertable status
-CREATE VIEW timescaledb_info AS
-SELECT 
-    h.table_name,
-    h.compression_state,
-    pg_size_pretty(hypertable_size(format('%I.%I', h.table_schema, h.table_name)::regclass)) AS total_size,
-    pg_size_pretty(
-        hypertable_size(format('%I.%I', h.table_schema, h.table_name)::regclass) - 
-        hypertable_compression_stats(format('%I.%I', h.table_schema, h.table_name)::regclass)
-    ) AS compressed_size
-FROM timescaledb_information.hypertables h;
-
--- View to monitor chunk compression status
-CREATE VIEW chunk_compression_status AS
-SELECT
-    h.table_name,
-    c.chunk_name,
-    c.range_start,
-    c.range_end,
-    c.is_compressed,
-    pg_size_pretty(c.total_bytes) AS chunk_size,
-    pg_size_pretty(c.compressed_total_bytes) AS compressed_size
-FROM timescaledb_information.chunks c
-JOIN timescaledb_information.hypertables h ON c.hypertable_name = h.table_name
-ORDER BY h.table_name, c.range_start DESC;
 
 -- ============================================================================
 -- Manual Maintenance Commands (for reference)
@@ -286,23 +214,21 @@ effective_io_concurrency = 200          # For SSD
 -- ============================================================================
 
 -- Check if TimescaleDB is properly installed
-SELECT default_version, installed_version 
-FROM pg_available_extensions 
+SELECT default_version, installed_version
+FROM pg_available_extensions
 WHERE name = 'timescaledb';
 
--- List all hypertables
-SELECT * FROM timescaledb_information.hypertables;
+-- List hypertables
+SELECT * FROM timescaledb_information.hypertables
+WHERE table_name = 'metrics';
 
--- Check compression policies
-SELECT * FROM timescaledb_information.jobs 
-WHERE proc_name LIKE '%compress%';
-
--- Check retention policies
-SELECT * FROM timescaledb_information.jobs 
-WHERE proc_name LIKE '%retention%';
+-- Check compression and retention policies
+SELECT * FROM timescaledb_information.jobs
+WHERE proc_name LIKE '%compress%' OR proc_name LIKE '%retention%';
 
 -- View continuous aggregates
-SELECT * FROM timescaledb_information.continuous_aggregates;
+SELECT * FROM timescaledb_information.continuous_aggregates
+WHERE view_name LIKE '%performance_stats';
 
 -- ============================================================================
 -- END OF TIMESCALEDB SETUP

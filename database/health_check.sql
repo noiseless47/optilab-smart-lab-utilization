@@ -11,7 +11,7 @@
 \echo ''
 
 
--- TODO : UPDATE THE HEALTH CHECK ACCORDING TO THE EXISTING SCHEMA
+-- Health check script updated to match current schema
 -- ============================================================================
 -- 1. Database Size & Growth
 -- ============================================================================
@@ -64,12 +64,12 @@ UNION ALL
 SELECT 
     'Total Metrics Collected',
     COUNT(*)
-FROM usage_metrics
+FROM metrics
 UNION ALL
-SELECT 
+SELECT
     'Metrics (Last 24h)',
     COUNT(*)
-FROM usage_metrics WHERE timestamp >= NOW() - INTERVAL '24 hours'
+FROM metrics WHERE timestamp >= NOW() - INTERVAL '24 hours'
 UNION ALL
 SELECT 
     'Active Alerts',
@@ -95,26 +95,12 @@ FROM optimization_reports;
 \echo '3. SYSTEM HEALTH STATUS'
 \echo '----------------------------'
 
-SELECT 
+SELECT
     COUNT(*) AS total_systems,
     SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) AS active,
     SUM(CASE WHEN status = 'offline' THEN 1 ELSE 0 END) AS offline,
-    SUM(CASE WHEN status = 'maintenance' THEN 1 ELSE 0 END) AS maintenance,
-    SUM(CASE WHEN last_seen < NOW() - INTERVAL '1 hour' AND status = 'active' THEN 1 ELSE 0 END) AS not_reporting
+    SUM(CASE WHEN status = 'maintenance' THEN 1 ELSE 0 END) AS maintenance
 FROM systems;
-
-\echo ''
-\echo 'Systems Not Reporting (>1 hour):'
-
-SELECT 
-    hostname,
-    location,
-    last_seen,
-    EXTRACT(EPOCH FROM (NOW() - last_seen))/3600 AS hours_offline
-FROM systems
-WHERE last_seen < NOW() - INTERVAL '1 hour'
-    AND status = 'active'
-ORDER BY last_seen ASC;
 
 \echo ''
 
@@ -127,30 +113,31 @@ ORDER BY last_seen ASC;
 
 \echo 'Invalid Metrics (percentage values outside 0-100):'
 
-SELECT 
+SELECT
     COUNT(*) AS invalid_metrics
-FROM usage_metrics
+FROM metrics
 WHERE cpu_percent < 0 OR cpu_percent > 100
     OR ram_percent < 0 OR ram_percent > 100
-    OR disk_percent < 0 OR disk_percent > 100;
+    OR disk_percent < 0 OR disk_percent > 100
+    OR gpu_percent < 0 OR gpu_percent > 100;
 
 \echo ''
 \echo 'Orphaned Metrics (no matching system):'
 
-SELECT 
+SELECT
     COUNT(*) AS orphaned_metrics
-FROM usage_metrics um
+FROM metrics um
 LEFT JOIN systems s ON um.system_id = s.system_id
 WHERE s.system_id IS NULL;
 
 \echo ''
 \echo 'Duplicate Timestamps:'
 
-SELECT 
+SELECT
     system_id,
     timestamp,
     COUNT(*) AS duplicates
-FROM usage_metrics
+FROM metrics
 GROUP BY system_id, timestamp
 HAVING COUNT(*) > 1
 LIMIT 5;
@@ -291,18 +278,18 @@ WHERE datname = 'lab_resource_monitor';
 \echo ''
 
 -- ============================================================================
--- 9. Last Collection Times
+-- 9. Data Collection Status
 -- ============================================================================
 
 \echo '9. DATA COLLECTION STATUS'
 \echo '----------------------------'
 
-SELECT 
+SELECT
     s.hostname,
     MAX(um.timestamp) AS last_metric,
     EXTRACT(EPOCH FROM (NOW() - MAX(um.timestamp)))/60 AS minutes_ago
 FROM systems s
-LEFT JOIN usage_metrics um ON s.system_id = um.system_id
+LEFT JOIN metrics um ON s.system_id = um.system_id
 WHERE s.status = 'active'
 GROUP BY s.hostname
 ORDER BY MAX(um.timestamp) DESC NULLS LAST;

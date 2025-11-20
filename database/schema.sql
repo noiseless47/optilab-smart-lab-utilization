@@ -106,7 +106,6 @@ CREATE TABLE IF NOT EXISTS systems (
     cpu_model VARCHAR(255),
     cpu_cores INT,
     ram_total_gb NUMERIC(10,2),
-    swap_total_gb NUMERIC(10,2)
     disk_total_gb NUMERIC(10,2),
     gpu_model VARCHAR(255),
     gpu_memory NUMERIC(10,2),
@@ -121,9 +120,9 @@ CREATE TABLE IF NOT EXISTS systems (
     status VARCHAR(20) DEFAULT 'discovered',   -- 'discovered', 'active', 'offline', 'maintenance'
     notes TEXT,
 
-    first_seen TIMESTAMPTZ DEFAULT NOW(),
-    last_seen TIMESTAMPTZ,
-    last_scan_id INT REFERENCES network_scans(scan_id),
+    -- first_seen TIMESTAMPTZ DEFAULT NOW(),
+    -- last_seen TIMESTAMPTZ,
+    -- last_scan_id INT REFERENCES network_scans(scan_id),
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
     
@@ -139,8 +138,6 @@ CREATE INDEX idx_systems_ip ON systems USING gist(ip_address inet_ops);
 CREATE INDEX idx_systems_mac ON systems(mac_address);
 CREATE INDEX idx_systems_hostname ON systems(hostname);
 CREATE INDEX idx_systems_status ON systems(status);
-CREATE INDEX idx_systems_last_seen ON systems(last_seen DESC);
-CREATE INDEX idx_systems_tags ON systems USING gin(tags);
 
 
 -- 5. USAGE METRICS (Time-Series Data)
@@ -156,7 +153,6 @@ CREATE TABLE IF NOT EXISTS metrics (
     
     -- Memory Metrics
     ram_percent NUMERIC(5,2) CHECK (ram_percent >= 0 AND ram_percent <= 100),
-    swap_percent NUMERIC(5,2) CHECK (swap_percent >= 0 AND swap_percent <= 100),
     
     -- Disk Metrics
     disk_percent NUMERIC(5,2) CHECK (disk_percent >= 0 AND disk_percent <= 100),
@@ -177,17 +173,17 @@ CREATE TABLE IF NOT EXISTS metrics (
     logged_in_users INT,
     
     -- Collection Metadata
-    collection_method VARCHAR(50),
-    collection_duration_ms INT,
+    -- collection_method VARCHAR(50),
+    -- collection_duration_ms INT,
     
     PRIMARY KEY (system_id, timestamp)
 );
 
-COMMENT ON TABLE usage_metrics IS 'Time-series resource utilization metrics';
+COMMENT ON TABLE metrics IS 'Time-series resource utilization metrics';
 
 -- Indexes for time-series queries
-CREATE INDEX idx_usage_metrics_timestamp ON usage_metrics(timestamp DESC);
-CREATE INDEX idx_usage_metrics_system_time ON usage_metrics(system_id, timestamp DESC);
+CREATE INDEX idx_metrics_timestamp ON metrics(timestamp DESC);
+CREATE INDEX idx_metrics_system_time ON metrics(system_id, timestamp DESC);
 
 
 -- -- 6. COLLECTION JOBS (Scheduled Tasks)
@@ -286,7 +282,7 @@ CREATE TABLE IF NOT EXISTS maintainence_logs (
     is_acknowledged BOOLEAN DEFAULT FALSE,
     acknowledged_at TIMESTAMPTZ,
     acknowledged_by VARCHAR(100),
-    resolved_at TIMESTAMPTZ,\
+    resolved_at TIMESTAMPTZ,
     severity VARCHAR(20) NOT NULL,
     message TEXT NOT NULL
 );
@@ -394,22 +390,17 @@ CREATE INDEX idx_perf_summary_period_type ON performance_summaries(period_type, 
 
 -- VIEWS FOR EASY QUERYING
 
--- TODO : MAKE SURE VIEWS ARE CONSISTENT WITH THE CURRENT SCHEMA.
+-- Views for easy querying
 -- View: Systems with department info
 CREATE OR REPLACE VIEW v_systems_overview AS
-SELECT 
+SELECT
     s.system_id,
     s.hostname,
     s.ip_address::TEXT,
     s.mac_address::TEXT,
     d.dept_name,
     d.dept_code,
-    s.os_type,
-    s.status,
-    s.collection_method,
-    s.last_seen,
-    EXTRACT(EPOCH FROM (NOW() - s.last_seen))/60 AS minutes_since_seen,
-    s.is_monitored
+    s.status
 FROM systems s
 LEFT JOIN departments d USING(dept_id);
 
@@ -421,19 +412,17 @@ SELECT DISTINCT ON (system_id)
     cpu_percent,
     ram_percent,
     disk_percent,
-    active_processes,
     logged_in_users
-FROM usage_metrics
+FROM metrics
 ORDER BY system_id, timestamp DESC;
 
 -- View: Department statistics
 CREATE OR REPLACE VIEW v_department_stats AS
-SELECT 
+SELECT
     d.dept_name,
     COUNT(s.system_id) AS total_systems,
     COUNT(s.system_id) FILTER (WHERE s.status = 'active') AS active_systems,
-    COUNT(s.system_id) FILTER (WHERE s.status = 'offline') AS offline_systems,
-    MAX(s.last_seen) AS last_scan_time
+    COUNT(s.system_id) FILTER (WHERE s.status = 'offline') AS offline_systems
 FROM departments d
 LEFT JOIN systems s USING(dept_id)
 GROUP BY d.dept_id, d.dept_name;
@@ -460,9 +449,6 @@ CREATE TRIGGER trg_systems_updated_at
     BEFORE UPDATE ON systems
     FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
-CREATE TRIGGER trg_collection_jobs_updated_at
-    BEFORE UPDATE ON collection_jobs
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
 -- ============================================================================
 -- HELPER FUNCTIONS
