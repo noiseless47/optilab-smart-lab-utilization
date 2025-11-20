@@ -9,13 +9,13 @@
 CREATE EXTENSION IF NOT EXISTS timescaledb;
 
 -- ============================================================================
--- Convert usage_metrics to Hypertable
+-- Convert metrics to Hypertable
 -- ============================================================================
 
--- Convert the usage_metrics table to a hypertable
+-- Convert the metrics table to a hypertable
 -- This enables automatic partitioning by time for efficient queries
 SELECT create_hypertable(
-    'usage_metrics',
+    'metrics',
     'timestamp',
     chunk_time_interval => INTERVAL '1 day',
     if_not_exists => TRUE,
@@ -24,17 +24,17 @@ SELECT create_hypertable(
 
 -- Set compression policy for older data
 -- Compress chunks older than 7 days to save space
-ALTER TABLE usage_metrics SET (
+ALTER TABLE metrics SET (
     timescaledb.compress,
     timescaledb.compress_segmentby = 'system_id',
     timescaledb.compress_orderby = 'timestamp DESC'
 );
 
-SELECT add_compression_policy('usage_metrics', INTERVAL '7 days');
+SELECT add_compression_policy('metrics', INTERVAL '7 days');
 
 -- Set retention policy (optional)
 -- Automatically drop data older than 1 year
-SELECT add_retention_policy('usage_metrics', INTERVAL '1 year');
+SELECT add_retention_policy('metrics', INTERVAL '1 year');
 
 -- ============================================================================
 -- Convert alert_logs to Hypertable
@@ -116,7 +116,7 @@ SELECT
     -- Count
     COUNT(*) AS metric_count
     
-FROM usage_metrics
+FROM metrics
 GROUP BY system_id, hour_bucket;
 
 -- Add refresh policy (refresh every hour, covering last 2 hours)
@@ -172,7 +172,7 @@ SELECT
     -- Count
     COUNT(*) AS metric_count
     
-FROM usage_metrics
+FROM metrics
 GROUP BY system_id, day_bucket;
 
 -- Add refresh policy (refresh daily, covering last 2 days)
@@ -246,7 +246,7 @@ ORDER BY h.table_name, c.range_start DESC;
 -- SELECT decompress_chunk(chunk_name);
 
 -- Check compression statistics:
--- SELECT * FROM hypertable_compression_stats('usage_metrics');
+-- SELECT * FROM hypertable_compression_stats('metrics');
 
 -- ============================================================================
 -- Performance Tuning Settings (adjust postgresql.conf)

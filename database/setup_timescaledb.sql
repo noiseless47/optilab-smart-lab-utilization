@@ -1,7 +1,7 @@
 # ============================================================================
 # TimescaleDB Setup for Lab Resource Monitoring
 # ============================================================================
-# This script converts the usage_metrics table to a TimescaleDB hypertable
+# This script converts the metrics table to a TimescaleDB hypertable
 # for 20x better performance on time-series queries
 #
 # Prerequisites:
@@ -22,16 +22,16 @@ FROM pg_available_extensions
 WHERE name = 'timescaledb';
 
 -- ============================================================================
--- Convert usage_metrics to Hypertable
+-- Convert metrics to Hypertable
 -- ============================================================================
 
 -- Check if table exists and has data
-SELECT COUNT(*) AS existing_records FROM usage_metrics;
+SELECT COUNT(*) AS existing_records FROM metrics;
 
 -- Convert to hypertable (partitions by timestamp)
 -- chunk_time_interval = 1 day means create a new partition every day
 SELECT create_hypertable(
-    'usage_metrics',              -- Table name
+    'metrics',              -- Table name
     'timestamp',                  -- Time column
     chunk_time_interval => INTERVAL '1 day',
     if_not_exists => TRUE,
@@ -40,7 +40,7 @@ SELECT create_hypertable(
 
 -- Show chunk information
 SELECT * FROM timescaledb_information.chunks
-WHERE hypertable_name = 'usage_metrics'
+WHERE hypertable_name = 'metrics'
 ORDER BY range_start DESC
 LIMIT 5;
 
@@ -49,7 +49,7 @@ LIMIT 5;
 -- ============================================================================
 
 -- Configure compression
-ALTER TABLE usage_metrics SET (
+ALTER TABLE metrics SET (
     timescaledb.compress,
     timescaledb.compress_segmentby = 'system_id',  -- Segment by system
     timescaledb.compress_orderby = 'timestamp DESC'
@@ -57,14 +57,14 @@ ALTER TABLE usage_metrics SET (
 
 -- Add compression policy (compress data older than 7 days)
 SELECT add_compression_policy(
-    'usage_metrics',
+    'metrics',
     INTERVAL '7 days',
     if_not_exists => TRUE
 );
 
 -- Check compression status
 SELECT * FROM timescaledb_information.compression_settings
-WHERE hypertable_name = 'usage_metrics';
+WHERE hypertable_name = 'metrics';
 
 -- ============================================================================
 -- Data Retention Policy (30 days for detailed metrics)
@@ -72,7 +72,7 @@ WHERE hypertable_name = 'usage_metrics';
 
 -- Add retention policy (drop chunks older than 30 days)
 SELECT add_retention_policy(
-    'usage_metrics',
+    'metrics',
     INTERVAL '30 days',
     if_not_exists => TRUE
 );
@@ -86,7 +86,7 @@ WHERE proc_name LIKE '%retention%';
 -- ============================================================================
 
 -- Hourly aggregates (keep for 1 year)
-CREATE MATERIALIZED VIEW IF NOT EXISTS usage_metrics_hourly
+CREATE MATERIALIZED VIEW IF NOT EXISTS metrics_hourly
 WITH (timescaledb.continuous) AS
 SELECT 
     system_id,
@@ -98,12 +98,12 @@ SELECT
     AVG(disk_percent) AS avg_disk,
     MAX(disk_percent) AS max_disk,
     COUNT(*) AS sample_count
-FROM usage_metrics
+FROM metrics
 GROUP BY system_id, bucket;
 
 -- Add refresh policy (update every hour)
 SELECT add_continuous_aggregate_policy(
-    'usage_metrics_hourly',
+    'metrics_hourly',
     start_offset => INTERVAL '2 hours',
     end_offset => INTERVAL '1 hour',
     schedule_interval => INTERVAL '1 hour',
@@ -111,7 +111,7 @@ SELECT add_continuous_aggregate_policy(
 );
 
 -- Daily aggregates (keep for 2 years)
-CREATE MATERIALIZED VIEW IF NOT EXISTS usage_metrics_daily
+CREATE MATERIALIZED VIEW IF NOT EXISTS metrics_daily
 WITH (timescaledb.continuous) AS
 SELECT 
     system_id,
@@ -123,12 +123,12 @@ SELECT
     AVG(disk_percent) AS avg_disk,
     MAX(disk_percent) AS max_disk,
     COUNT(*) AS sample_count
-FROM usage_metrics
+FROM metrics
 GROUP BY system_id, bucket;
 
 -- Add refresh policy (update daily)
 SELECT add_continuous_aggregate_policy(
-    'usage_metrics_daily',
+    'metrics_daily',
     start_offset => INTERVAL '2 days',
     end_offset => INTERVAL '1 day',
     schedule_interval => INTERVAL '1 day',
@@ -148,7 +148,7 @@ SELECT
 FROM systems s
 JOIN LATERAL (
     SELECT timestamp, cpu_percent, ram_percent
-    FROM usage_metrics
+    FROM metrics
     WHERE system_id = s.system_id
     ORDER BY timestamp DESC
     LIMIT 1
@@ -161,7 +161,7 @@ SELECT
     avg_cpu,
     avg_ram,
     sample_count
-FROM usage_metrics_hourly
+FROM metrics_hourly
 WHERE system_id = 1
   AND bucket >= NOW() - INTERVAL '24 hours'
 ORDER BY bucket DESC;
@@ -173,7 +173,7 @@ SELECT
     max_cpu,
     avg_ram,
     max_ram
-FROM usage_metrics_daily
+FROM metrics_daily
 WHERE system_id = 1
   AND bucket >= NOW() - INTERVAL '30 days'
 ORDER BY bucket DESC;
@@ -193,7 +193,7 @@ SELECT
     pg_size_pretty(total_bytes) AS total_size,
     pg_size_pretty(compressed_total_bytes) AS compressed_size
 FROM timescaledb_information.chunks
-WHERE hypertable_name = 'usage_metrics'
+WHERE hypertable_name = 'metrics'
 ORDER BY range_start DESC
 LIMIT 10;
 
@@ -203,7 +203,7 @@ SELECT
     pg_size_pretty(after_compression_total_bytes) AS compressed,
     ROUND(100 - (after_compression_total_bytes::NUMERIC / before_compression_total_bytes * 100), 2) AS compression_ratio
 FROM timescaledb_information.compression_settings
-WHERE hypertable_name = 'usage_metrics';
+WHERE hypertable_name = 'metrics';
 
 -- View all jobs (compression, retention, aggregates)
 SELECT 
@@ -220,25 +220,25 @@ ORDER BY job_id;
 -- ============================================================================
 
 -- Without TimescaleDB (slow for large datasets):
--- SELECT AVG(cpu_percent) FROM usage_metrics WHERE timestamp > NOW() - INTERVAL '7 days';
+-- SELECT AVG(cpu_percent) FROM metrics WHERE timestamp > NOW() - INTERVAL '7 days';
 
 -- With TimescaleDB + Continuous Aggregate (20-100x faster):
--- SELECT AVG(avg_cpu) FROM usage_metrics_hourly WHERE bucket > NOW() - INTERVAL '7 days';
+-- SELECT AVG(avg_cpu) FROM metrics_hourly WHERE bucket > NOW() - INTERVAL '7 days';
 
 -- ============================================================================
 -- Cleanup (if needed)
 -- ============================================================================
 
 -- Drop continuous aggregates
--- DROP MATERIALIZED VIEW IF EXISTS usage_metrics_hourly CASCADE;
--- DROP MATERIALIZED VIEW IF EXISTS usage_metrics_daily CASCADE;
+-- DROP MATERIALIZED VIEW IF EXISTS metrics_hourly CASCADE;
+-- DROP MATERIALIZED VIEW IF EXISTS metrics_daily CASCADE;
 
 -- Remove policies
--- SELECT remove_compression_policy('usage_metrics', if_exists => TRUE);
--- SELECT remove_retention_policy('usage_metrics', if_exists => TRUE);
+-- SELECT remove_compression_policy('metrics', if_exists => TRUE);
+-- SELECT remove_retention_policy('metrics', if_exists => TRUE);
 
 -- Revert to regular table (NOT RECOMMENDED)
--- SELECT disable_hypertable('usage_metrics');
+-- SELECT disable_hypertable('metrics');
 
 -- ============================================================================
 
