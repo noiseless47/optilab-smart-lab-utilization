@@ -1,3 +1,51 @@
+
+
+-- ============================================================================
+-- DROP EXISTING TABLES (for clean schema updates)
+-- ============================================================================
+-- Uncomment the following lines if you want to drop all tables before recreating
+-- WARNING: This will delete all data! Use only for development/schema updates.
+
+
+-- Drop views first (due to dependencies)
+DROP VIEW IF EXISTS v_systems_overview CASCADE;
+DROP VIEW IF EXISTS v_latest_metrics CASCADE;
+DROP VIEW IF EXISTS v_department_stats CASCADE;
+
+-- Drop continuous aggregates (TimescaleDB)
+DROP MATERIALIZED VIEW IF EXISTS hourly_performance_stats CASCADE;
+DROP MATERIALIZED VIEW IF EXISTS daily_performance_stats CASCADE;
+
+-- Drop triggers
+DROP TRIGGER IF EXISTS trg_departments_updated_at ON departments;
+DROP TRIGGER IF EXISTS trg_systems_updated_at ON systems;
+
+-- Drop functions
+DROP FUNCTION IF EXISTS update_updated_at() CASCADE;
+DROP FUNCTION IF EXISTS get_systems_in_subnet(TEXT) CASCADE;
+DROP FUNCTION IF EXISTS count_active_systems_by_dept() CASCADE;
+
+-- Drop tables (in reverse dependency order)
+DROP TABLE IF EXISTS performance_summaries CASCADE;
+DROP TABLE IF EXISTS maintainence_logs CASCADE;
+DROP TABLE IF EXISTS metrics CASCADE;
+DROP TABLE IF EXISTS systems CASCADE;
+DROP TABLE IF EXISTS collection_credentials CASCADE;
+DROP TABLE IF EXISTS network_scans CASCADE;
+DROP TABLE IF EXISTS lab_assistants CASCADE;
+DROP TABLE IF EXISTS labs CASCADE;
+DROP TABLE IF EXISTS departments CASCADE;
+DROP TABLE IF EXISTS hods CASCADE;
+
+-- Drop extensions (if needed)
+-- DROP EXTENSION IF EXISTS pgcrypto CASCADE;
+-- DROP EXTENSION IF EXISTS timescaledb CASCADE;
+
+
+-- ============================================================================
+-- SCHEMA CREATION
+-- ============================================================================
+
 -- HODs
 CREATE TABLE IF NOT EXISTS hods (
     hod_id SERIAL PRIMARY KEY,
@@ -111,7 +159,7 @@ CREATE TABLE IF NOT EXISTS systems (
     gpu_memory NUMERIC(10,2),
     
     -- Collection Configuration
-    credential_id INT REFERENCES collection_credentials(credential_id),
+    -- credential_id INT REFERENCES collection_credentials(credential_id),
     snmp_enabled BOOLEAN DEFAULT FALSE,
     ssh_port INT DEFAULT 22,
     -- collection_method VARCHAR(50),             -- 'wmi', 'ssh', 'snmp', 'agent', 'none'
@@ -120,7 +168,7 @@ CREATE TABLE IF NOT EXISTS systems (
     status VARCHAR(20) DEFAULT 'discovered',   -- 'discovered', 'active', 'offline', 'maintenance'
     notes TEXT,
 
-    -- first_seen TIMESTAMPTZ DEFAULT NOW(),
+    -- first_seen TIMESTAMPTZ DEFAULT NOW(),/
     -- last_seen TIMESTAMPTZ,
     -- last_scan_id INT REFERENCES network_scans(scan_id),
     created_at TIMESTAMPTZ DEFAULT NOW(),
