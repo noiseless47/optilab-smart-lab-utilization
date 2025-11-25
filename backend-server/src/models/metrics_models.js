@@ -36,40 +36,40 @@ class MetricsModel {
 
     // RAW METRICS OPERATIONS -----------------------------------------------------------------
 
-    async addMetrics(system_id, metrics) {
-        this.validateID(system_id)
+    // async addMetrics(system_id, metrics) {
+    //     this.validateID(system_id)
 
-        const {
-            cpu_percent, ram_percent, disk_percent,
-            network_sent_mbps, network_recv_mbps,
-            gpu_percent, gpu_memory_used_gb, gpu_temperature,
-            uptime_seconds, logged_in_users,
-            collection_method, collection_duration_ms
-        } = metrics
+    //     const {
+    //         cpu_percent, ram_percent, disk_percent,
+    //         network_sent_mbps, network_recv_mbps,
+    //         gpu_percent, gpu_memory_used_gb, gpu_temperature,
+    //         uptime_seconds, logged_in_users,
+    //         collection_method, collection_duration_ms
+    //     } = metrics
 
-        // Validate percentages
-        if (cpu_percent !== undefined) this.validatePercent(cpu_percent, 'cpu_percent')
-        if (ram_percent !== undefined) this.validatePercent(ram_percent, 'ram_percent')
-        if (disk_percent !== undefined) this.validatePercent(disk_percent, 'disk_percent')
-        if (gpu_percent !== undefined) this.validatePercent(gpu_percent, 'gpu_percent')
+    //     // Validate percentages
+    //     if (cpu_percent !== undefined) this.validatePercent(cpu_percent, 'cpu_percent')
+    //     if (ram_percent !== undefined) this.validatePercent(ram_percent, 'ram_percent')
+    //     if (disk_percent !== undefined) this.validatePercent(disk_percent, 'disk_percent')
+    //     if (gpu_percent !== undefined) this.validatePercent(gpu_percent, 'gpu_percent')
 
-        return await this.query(
-            this.sql`
-                INSERT INTO metrics (
-                    system_id, cpu_percent, ram_percent, disk_percent,
-                    network_sent_mbps, network_recv_mbps, gpu_percent,
-                    gpu_memory_used_gb, gpu_temperature, uptime_seconds,
-                    logged_in_users, collection_method, collection_duration_ms
-                ) VALUES (
-                    ${system_id}, ${cpu_percent}, ${ram_percent}, ${disk_percent},
-                    ${network_sent_mbps}, ${network_recv_mbps}, ${gpu_percent},
-                    ${gpu_memory_used_gb}, ${gpu_temperature}, ${uptime_seconds},
-                    ${logged_in_users}, ${collection_method}, ${collection_duration_ms}
-                ) RETURNING *
-            `,
-            'Failed to add metrics'
-        )
-    }
+    //     return await this.query(
+    //         this.sql`
+    //             INSERT INTO metrics (
+    //                 system_id, cpu_percent, ram_percent, disk_percent,
+    //                 network_sent_mbps, network_recv_mbps, gpu_percent,
+    //                 gpu_memory_used_gb, gpu_temperature, uptime_seconds,
+    //                 logged_in_users, collection_method, collection_duration_ms
+    //             ) VALUES (
+    //                 ${system_id}, ${cpu_percent}, ${ram_percent}, ${disk_percent},
+    //                 ${network_sent_mbps}, ${network_recv_mbps}, ${gpu_percent},
+    //                 ${gpu_memory_used_gb}, ${gpu_temperature}, ${uptime_seconds},
+    //                 ${logged_in_users}, ${collection_method}, ${collection_duration_ms}
+    //             ) RETURNING *
+    //         `,
+    //         'Failed to add metrics'
+    //     )
+    // }
 
     async getMetricsBySystem(systemID, limit = 100, hours = 24) {
         this.validateID(systemID)
