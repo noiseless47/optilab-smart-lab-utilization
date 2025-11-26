@@ -72,6 +72,18 @@ psql -c "SELECT default_version, installed_version FROM pg_available_extensions 
 
 ## Database Setup
 
+### Schema Update Modes
+
+The database supports two update modes:
+
+1. **Clean Recreation**: Drop all existing tables and recreate from scratch
+   - Useful for major schema changes or development resets
+   - Requires uncommenting the DROP section in `schema.sql`
+
+2. **Incremental Update**: Update existing schema without data loss
+   - Default behavior with DROP section commented out
+   - Safe for production updates and minor changes
+
 ### 1. Create Database
 
 ```bash
@@ -111,6 +123,25 @@ Execute the schema creation script:
 ```bash
 psql -U postgres -d lab_resource_monitor -f database/schema.sql
 ```
+
+**For Clean Schema Updates:**
+If you need to recreate the schema from scratch (development/updates), uncomment the DROP TABLES section at the beginning of `schema.sql`:
+
+```sql
+-- Uncomment these lines in schema.sql before running:
+/*
+DROP VIEW IF EXISTS v_systems_overview CASCADE;
+DROP VIEW IF EXISTS v_latest_metrics CASCADE;
+...
+DROP TABLE IF EXISTS performance_summaries CASCADE;
+-- etc.
+*/
+```
+
+Then run the schema script. This will drop all existing tables and recreate them cleanly.
+
+**For Incremental Updates:**
+Keep the DROP section commented out. The script uses `CREATE TABLE IF NOT EXISTS` and `CREATE OR REPLACE` statements, so it will only create missing tables/views and update existing ones.
 
 This will create:
 - All tables (departments, systems, metrics, etc.)

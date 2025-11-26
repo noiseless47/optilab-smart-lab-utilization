@@ -12,14 +12,35 @@ CREATE EXTENSION IF NOT EXISTS timescaledb;
 -- Convert metrics to Hypertable
 -- ============================================================================
 
+-- First, check if metrics table exists and has data
+DO $$ 
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'metrics') THEN
+        -- Create metrics table if it doesn't exist
+        CREATE TABLE metrics (
+            timestamp TIMESTAMPTZ NOT NULL,
+            system_id TEXT NOT NULL,
+            cpu_percent DOUBLE PRECISION,
+            ram_percent DOUBLE PRECISION,
+            gpu_utilization DOUBLE PRECISION,
+            disk_io_wait_percent DOUBLE PRECISION,
+            disk_read_mb_s DOUBLE PRECISION,
+            disk_write_mb_s DOUBLE PRECISION,
+            swap_percent DOUBLE PRECISION,
+            load_avg_1min DOUBLE PRECISION,
+            hostname TEXT
+        );
+    END IF;
+END $$;
+
 -- Convert the metrics table to a hypertable
 -- This enables automatic partitioning by time for efficient queries
 SELECT create_hypertable(
     'metrics',
     'timestamp',
     chunk_time_interval => INTERVAL '1 day',
-    if_not_exists => TRUE,
-    migrate_data => TRUE
+    if_not_exists => TRUE
+    -- Remove migrate_data parameter for safety
 );
 
 -- Set compression policy for older data
@@ -30,16 +51,20 @@ ALTER TABLE metrics SET (
     timescaledb.compress_orderby = 'timestamp DESC'
 );
 
-SELECT add_compression_policy('metrics', INTERVAL '7 days');
+SELECT add_compression_policy('metrics', INTERVAL '7 days', if_not_exists => TRUE);
 
 -- Set retention policy (optional)
 -- Automatically drop data older than 1 year
-SELECT add_retention_policy('metrics', INTERVAL '1 year');
+SELECT add_retention_policy('metrics', INTERVAL '1 year', if_not_exists => TRUE);
 
 
 -- ============================================================================
 -- Continuous Aggregates for Performance
 -- ============================================================================
+
+-- Drop existing continuous aggregates if they exist
+DROP MATERIALIZED VIEW IF EXISTS hourly_performance_stats CASCADE;
+DROP MATERIALIZED VIEW IF EXISTS daily_performance_stats CASCADE;
 
 -- Continuous Aggregate: Hourly Performance Summaries
 -- Automatically maintains materialized view with hourly stats
@@ -53,12 +78,12 @@ SELECT
     AVG(cpu_percent) AS avg_cpu_percent,
     MAX(cpu_percent) AS max_cpu_percent,
     MIN(cpu_percent) AS min_cpu_percent,
-    PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY cpu_percent) AS p95_cpu_percent,
+    APPROX_PERCENTILE(0.95, cpu_percent) AS p95_cpu_percent,
     
     -- RAM Statistics
     AVG(ram_percent) AS avg_ram_percent,
     MAX(ram_percent) AS max_ram_percent,
-    PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY ram_percent) AS p95_ram_percent,
+    APPROX_PERCENTILE(0.95, ram_percent) AS p95_ram_percent,
     
     -- GPU Statistics
     AVG(gpu_utilization) AS avg_gpu_percent,
@@ -66,8 +91,8 @@ SELECT
     
     -- Disk Statistics
     AVG(disk_io_wait_percent) AS avg_disk_io_wait,
-    SUM(disk_read_mb_s * 60 / 1024.0) AS total_disk_read_gb, -- Convert to GB
-    SUM(disk_write_mb_s * 60 / 1024.0) AS total_disk_write_gb,
+    SUM(COALESCE(disk_read_mb_s, 0) * 60 / 1024.0) AS total_disk_read_gb, -- Convert to GB
+    SUM(COALESCE(disk_write_mb_s, 0) * 60 / 1024.0) AS total_disk_write_gb,
     
     -- Load Statistics
     AVG(load_avg_1min) AS avg_load_1min,
@@ -78,11 +103,12 @@ SELECT
 FROM metrics
 GROUP BY system_id, hour_bucket;
 
--- Add refresh policy (refresh every hour, covering last 2 hours)
+-- Add refresh policy with proper window sizes
 SELECT add_continuous_aggregate_policy('hourly_performance_stats',
-    start_offset => INTERVAL '2 hours',
+    start_offset => INTERVAL '3 hours',
     end_offset => INTERVAL '1 hour',
-    schedule_interval => INTERVAL '1 hour');
+    schedule_interval => INTERVAL '1 hour',
+    if_not_exists => TRUE);
 
 -- ============================================================================
 
@@ -96,34 +122,34 @@ SELECT
     -- CPU Statistics
     AVG(cpu_percent) AS avg_cpu_percent,
     MAX(cpu_percent) AS max_cpu_percent,
-    PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY cpu_percent) AS p95_cpu_percent,
+    APPROX_PERCENTILE(0.95, cpu_percent) AS p95_cpu_percent,
     SUM(CASE WHEN cpu_percent > 80 THEN 1 ELSE 0 END) * 5 AS cpu_above_80_minutes, -- Assuming 5-min intervals
     
     -- RAM Statistics
     AVG(ram_percent) AS avg_ram_percent,
     MAX(ram_percent) AS max_ram_percent,
-    PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY ram_percent) AS p95_ram_percent,
-    SUM(CASE WHEN swap_percent > 0 THEN 1 ELSE 0 END) * 5 AS swap_used_minutes,
+    APPROX_PERCENTILE(0.95, ram_percent) AS p95_ram_percent,
+    SUM(CASE WHEN COALESCE(swap_percent, 0) > 0 THEN 1 ELSE 0 END) * 5 AS swap_used_minutes,
     
     -- GPU Statistics
     AVG(gpu_utilization) AS avg_gpu_percent,
     MAX(gpu_utilization) AS max_gpu_percent,
-    SUM(CASE WHEN gpu_utilization < 10 THEN 1 ELSE 0 END) * 5 AS gpu_idle_minutes,
+    SUM(CASE WHEN COALESCE(gpu_utilization, 0) < 10 THEN 1 ELSE 0 END) * 5 AS gpu_idle_minutes,
     
     -- Disk Statistics
     AVG(disk_io_wait_percent) AS avg_disk_io_wait,
-    SUM(disk_read_mb_s * 300 / 1024.0) AS total_disk_read_gb, -- 5-min intervals
-    SUM(disk_write_mb_s * 300 / 1024.0) AS total_disk_write_gb,
+    SUM(COALESCE(disk_read_mb_s, 0) * 300 / 1024.0) AS total_disk_read_gb, -- 5-min intervals
+    SUM(COALESCE(disk_write_mb_s, 0) * 300 / 1024.0) AS total_disk_write_gb,
     
     -- Utilization Flags
     CASE 
-        WHEN AVG(cpu_percent) < 30 AND AVG(ram_percent) < 30 THEN TRUE 
+        WHEN AVG(COALESCE(cpu_percent, 0)) < 30 AND AVG(COALESCE(ram_percent, 0)) < 30 THEN TRUE 
         ELSE FALSE 
     END AS is_underutilized,
     
     CASE 
-        WHEN PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY cpu_percent) > 90 
-            OR PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY ram_percent) > 90 
+        WHEN APPROX_PERCENTILE(0.95, COALESCE(cpu_percent, 0)) > 90 
+            OR APPROX_PERCENTILE(0.95, COALESCE(ram_percent, 0)) > 90 
         THEN TRUE 
         ELSE FALSE 
     END AS is_overutilized,
@@ -134,80 +160,38 @@ SELECT
 FROM metrics
 GROUP BY system_id, day_bucket;
 
--- Add refresh policy (refresh daily, covering last 2 days)
+-- Add refresh policy with proper window sizes
 SELECT add_continuous_aggregate_policy('daily_performance_stats',
-    start_offset => INTERVAL '2 days',
+    start_offset => INTERVAL '3 days',
     end_offset => INTERVAL '1 day',
-    schedule_interval => INTERVAL '1 day');
+    schedule_interval => INTERVAL '1 day',
+    if_not_exists => TRUE);
 
 -- ============================================================================
--- Optimize Continuous Aggregates
+-- Add Indexes for Better Performance
 -- ============================================================================
 
--- Enable compression for continuous aggregates (optional - for very large datasets)
--- ALTER MATERIALIZED VIEW hourly_performance_stats SET (
---     timescaledb.compress,
---     timescaledb.compress_segmentby = 'system_id',
---     timescaledb.compress_orderby = 'hour_bucket DESC'
--- );
--- SELECT add_compression_policy('hourly_performance_stats', INTERVAL '90 days');
-
--- ALTER MATERIALIZED VIEW daily_performance_stats SET (
---     timescaledb.compress,
---     timescaledb.compress_segmentby = 'system_id',
---     timescaledb.compress_orderby = 'day_bucket DESC'
--- );
--- SELECT add_compression_policy('daily_performance_stats', INTERVAL '1 year');
-
+-- Index for common query patterns
+CREATE INDEX IF NOT EXISTS idx_metrics_system_timestamp ON metrics (system_id, timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_metrics_timestamp ON metrics (timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_hourly_stats_bucket ON hourly_performance_stats (system_id, hour_bucket DESC);
+CREATE INDEX IF NOT EXISTS idx_daily_stats_bucket ON daily_performance_stats (system_id, day_bucket DESC);
 
 -- ============================================================================
--- Manual Maintenance Commands (for reference)
+-- Insert Sample Data for Testing
 -- ============================================================================
 
--- Manually refresh continuous aggregate:
--- SELECT refresh_continuous_aggregate('hourly_performance_stats', NULL, NULL);
-
--- Manually compress a specific chunk:
--- SELECT compress_chunk(chunk_name) FROM timescaledb_information.chunks WHERE ...;
-
--- Manually decompress a chunk (if needed for updates):
--- SELECT decompress_chunk(chunk_name);
-
--- Check compression statistics:
--- SELECT * FROM hypertable_compression_stats('metrics');
-
--- ============================================================================
--- Performance Tuning Settings (adjust postgresql.conf)
--- ============================================================================
-
-/*
-# Recommended PostgreSQL settings for TimescaleDB
-
-# Memory
-shared_buffers = 4GB                    # 25% of total RAM
-effective_cache_size = 12GB             # 75% of total RAM
-work_mem = 32MB
-maintenance_work_mem = 512MB
-
-# TimescaleDB specific
-timescaledb.max_background_workers = 8
-max_worker_processes = 16
-max_parallel_workers_per_gather = 4
-max_parallel_workers = 8
-
-# Checkpoints
-checkpoint_timeout = 15min
-max_wal_size = 2GB
-min_wal_size = 512MB
-
-# Write-ahead log
-wal_buffers = 16MB
-wal_compression = on
-
-# Query planner
-random_page_cost = 1.1                  # For SSD
-effective_io_concurrency = 200          # For SSD
-*/
+-- Insert some sample data to test the setup
+INSERT INTO metrics (timestamp, system_id, cpu_percent, ram_percent, gpu_utilization, disk_io_wait_percent, hostname) 
+SELECT 
+    NOW() - (interval '1 minute' * (seq * 5)),
+    'system-' || ((seq % 3) + 1)::text,
+    (random() * 100)::double precision,
+    (random() * 100)::double precision,
+    (random() * 100)::double precision,
+    (random() * 10)::double precision,
+    'host-' || ((seq % 3) + 1)::text
+FROM generate_series(1, 100) AS seq;
 
 -- ============================================================================
 -- Verification Queries
@@ -219,16 +203,74 @@ FROM pg_available_extensions
 WHERE name = 'timescaledb';
 
 -- List hypertables
-SELECT * FROM timescaledb_information.hypertables
-WHERE table_name = 'metrics';
+SELECT 
+    hypertable_schema,
+    hypertable_name,
+    owner,
+    num_chunks,
+    compression_enabled,
+    is_distributed
+FROM timescaledb_information.hypertables
+WHERE hypertable_name = 'metrics';
+
+-- Check chunks information
+SELECT 
+    chunk_schema,
+    chunk_name,
+    range_start,
+    range_end,
+    is_compressed,
+    chunk_size,
+    compressed_chunk_size
+FROM timescaledb_information.chunks
+WHERE hypertable_name = 'metrics'
+ORDER BY range_start DESC
+LIMIT 5;
 
 -- Check compression and retention policies
-SELECT * FROM timescaledb_information.jobs
-WHERE proc_name LIKE '%compress%' OR proc_name LIKE '%retention%';
+SELECT 
+    job_id,
+    application_name,
+    schedule_interval,
+    last_run_started_at,
+    total_runs,
+    total_successes,
+    total_failures
+FROM timescaledb_information.job_stats
+WHERE hypertable_name = 'metrics';
 
 -- View continuous aggregates
-SELECT * FROM timescaledb_information.continuous_aggregates
+SELECT 
+    view_name,
+    materialized_only,
+    compression_enabled
+FROM timescaledb_information.continuous_aggregates
 WHERE view_name LIKE '%performance_stats';
+
+-- Test query on continuous aggregates
+SELECT 
+    system_id,
+    hour_bucket,
+    avg_cpu_percent,
+    max_cpu_percent,
+    p95_cpu_percent,
+    metric_count
+FROM hourly_performance_stats
+ORDER BY hour_bucket DESC, system_id
+LIMIT 10;
+
+-- ============================================================================
+-- Setup Completion Message
+-- ============================================================================
+
+DO $$ 
+BEGIN
+    RAISE NOTICE 'TimescaleDB setup completed successfully!';
+    RAISE NOTICE 'Hypertable: metrics';
+    RAISE NOTICE 'Continuous Aggregates: hourly_performance_stats, daily_performance_stats';
+    RAISE NOTICE 'Compression: Enabled (7+ days old)';
+    RAISE NOTICE 'Retention: 1 year';
+END $$;
 
 -- ============================================================================
 -- END OF TIMESCALEDB SETUP

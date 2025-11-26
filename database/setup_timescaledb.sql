@@ -1,18 +1,3 @@
-# ============================================================================
-# TimescaleDB Setup for Lab Resource Monitoring
-# ============================================================================
-# This script converts the metrics table to a TimescaleDB hypertable
-# for 20x better performance on time-series queries
-#
-# Prerequisites:
-#   1. Install TimescaleDB extension
-#      - Download: https://docs.timescale.com/install/latest/self-hosted/
-#      - For PostgreSQL 18: Follow installation guide
-#
-# Usage:
-#   psql -U postgres -d lab_resource_monitor -f setup_timescaledb.sql
-# ============================================================================
-
 -- Enable TimescaleDB extension
 CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE;
 
