@@ -61,9 +61,9 @@ Arguments:
 
 Environment Variables:
     DB_HOST         Database host (default: localhost)
-    DB_PORT         Database port (default: 5432)
-    DB_NAME         Database name (default: optilab)
-    DB_USER         Database user (default: postgres)
+    DB_PORT         Database port (default: 5433)
+    DB_NAME         Database name (default: optilab_mvp)
+    DB_USER         Database user (default: aayush)
     DB_PASSWORD     Database password
 
 Examples:
