@@ -1,13 +1,12 @@
 const app = require('./app');
 const config = require('./config/config');
-const router = express.Router();
 
-router.use('/departments', require('./routes/departments'));
+let server;
 
 const exitHandler = () => {
   if (server) {
     server.close(() => {
-      logger.info('Server closed');
+      console.log('Server closed');
       process.exit(1);
     });
   } else {
@@ -16,7 +15,7 @@ const exitHandler = () => {
 };
 
 const unexpectedErrorHandler = (error) => {
-  logger.error(error);
+  console.error(error);
   exitHandler();
 };
 
@@ -24,10 +23,14 @@ process.on('uncaughtException', unexpectedErrorHandler);
 process.on('unhandledRejection', unexpectedErrorHandler);
 
 process.on('SIGTERM', () => {
-  logger.info('SIGTERM received');
+  console.log('SIGTERM received');
   if (server) {
     server.close();
   }
 });
 
-module.export = router;
+server = app.listen(config.port, () => {
+  console.log(`Listening to port ${config.port}`);
+});
+
+module.exports = app;
