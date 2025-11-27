@@ -325,6 +325,7 @@ CREATE INDEX idx_metrics_system_time ON metrics(system_id, timestamp DESC);
 CREATE TABLE IF NOT EXISTS maintainence_logs (
     maintainence_id BIGSERIAL PRIMARY KEY,
     system_id INT REFERENCES systems(system_id) ON DELETE CASCADE,
+    lab_id INT REFERENCES labs(lab_id) ON DELETE CASCADE,
     date_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     is_acknowledged BOOLEAN DEFAULT FALSE,
     acknowledged_at TIMESTAMPTZ,

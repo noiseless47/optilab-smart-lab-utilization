@@ -2,6 +2,9 @@
 
 This guide provides step-by-step instructions for setting up the OptiLab Smart Lab Utilization database system.
 
+Start postgresql 16
+sudo systemctl restart postgresql@16-main
+
 ## Overview
 
 The system uses PostgreSQL with TimescaleDB extension for time-series data optimization. The database consists of:

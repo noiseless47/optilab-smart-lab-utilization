@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const departmentModel = require('../../models/department_model');
+const departmentModel = require('../../models/department_models');
 
 
 router.get("/",(req,res)=>{
@@ -15,19 +15,6 @@ router.get("/",(req,res)=>{
     })
 })
 
-router.get("/:deptID", (req, res) => {
-    // TODO : SHOULD I ADD A ROUTE TO SEE ALL LABS  OF A DEPT HERE? HOW?
-    const deptID = req.params.deptID;
-    departmentModel.getDepartmentbyID(deptID)
-    .then((dep) => {
-        console.log("\x1b[32m%s\x1b[0m", "Operation Successful.")
-        res.status(200).json(dep);
-    })
-    .catch((err)=>{
-        res.status(500).json({error:err.message});  
-        console.error("Error:", err.message);
-    })
-})
 
 router.post("/", (req,res)=>{
     const {name, code, vlan, subnet, description, hodID} = req.body;
@@ -69,5 +56,6 @@ router.delete("/:deptID", (req, res) => {
     })
 })
 
+router.use('/:deptID', require('./:deptID'));
 
 module.exports = router;

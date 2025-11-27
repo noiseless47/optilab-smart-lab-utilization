@@ -5,6 +5,7 @@ class DepartmentModel {
         this.sql = sql
     }
 
+
     // Basic validation
     validateRequired(value, fieldName) {
         if (!value || value === '') throw new Error(`${fieldName} required`)
@@ -31,8 +32,7 @@ class DepartmentModel {
         this.validateRequired(name, 'name')
         this.validateRequired(email, 'email')
         return await this.query(
-            this.sql`INSERT INTO hods(hod_name, hod_email) VALUES(${name}, ${email}) RETURNING *`,
-            'Failed to add HOD'
+            this.sql`INSERT INTO hods(hod_name, hod_email) VALUES(${name}, ${email}) RETURNING hod_id`,
         )
     }
 
@@ -179,10 +179,14 @@ class DepartmentModel {
         return result[0] || null
     }
 
-    async getAllLabAssistants(labID) {
-        const query = labID ?
-            this.sql`SELECT * FROM lab_assistants WHERE lab_assigned = ${labID} ORDER BY lab_assistant_name` :
-            this.sql`SELECT * FROM lab_assistants ORDER BY lab_assistant_name`
+    async getLabAssistantsByDept(deptID){
+        const query = this.sql`SELECT * FROM lab_assistants WHERE lab_assistant_dept = ${deptID} ORDER BY lab_assistant_name`
+        return await this.query(query, 'Failed to get lab assistants')
+
+    }
+
+    async getAllLabAssistantsByLab(labID) {
+        const query = this.sql`SELECT * FROM lab_assistants WHERE lab_assigned = ${labID} ORDER BY lab_assistant_name`
         return await this.query(query, 'Failed to get lab assistants')
     }
 
@@ -251,6 +255,50 @@ class DepartmentModel {
         return await this.query(
             this.sql`DELETE FROM systems WHERE system_id = ${id}`,
             'Failed to delete system'
+        )
+    }
+
+    // MAINTAINENCE MODELS -----------------------------------------------------------------
+    
+    async addMaintainence(system_id, lab_id, date_at, isACK, ACKat, ACKby, resolved_at, severity, message) {
+        this.validateID(system_id);
+        this.validateID(lab_id);
+        this.validateRequired(severity, 'severity');
+        this.validateRequired(message, 'message');
+        this.validateRequired(date_at, 'date_at');
+
+        query = this.sql`INSERT INTO maintainence_logs(system_id, lab_id, date_at, is_acknowledged, acknowledged_at, acknowledged_by, resolved_at, severity, message) VALUES(${system_id}, ${lab_id}, ${date_at}, ${isACK}, ${ACKat}, ${ACKby}, ${resolved_at}, ${severity}, ${message}) RETURNING *`
+
+        return await this.query(query, 'Failed to add maintainence log')
+    }
+    
+    async getMaintainenceByLabID(lab_id) {
+        this.validateID(lab_id)
+        query = this.sql`SELECT * FROM maintainence_logs WHERE lab_id = ${lab_id}`
+        const result = await this.query(
+            query,
+            'Failed to get maintainence logs'
+        )
+    }
+
+    async getMaintainenceByID(maintainence_id) {
+        this.validateID(maintainence_id)
+        query = this.sql`SELECT * FROM maintainence_logs WHERE maintainence_id = ${maintainence_id}`
+        const result = await this.query(
+            query,
+            'Failed to get maintainence log'
+        )
+    }
+
+    async updateMaintainence(maintainence_id, updates) {
+        this.validateID(maintainence_id)
+        const fields = Object.keys(updates).filter(key => updates[key] !== undefined)
+        if (fields.length === 0) throw new Error('No fields to update')
+
+        const setClause = fields.map(field => `${field} = ${updates[field]}`).join(', ')
+        return await this.query(
+            this.sql`UPDATE maintainence_logs SET ${setClause} WHERE maintainence_id = ${maintainence_id} RETURNING *`,
+            'Failed to update maintainence log'
         )
     }
 }
