@@ -70,8 +70,7 @@ COMMENT ON TABLE departments IS 'Academic departments and their network configur
 CREATE TABLE IF NOT EXISTS labs (
     lab_id SERIAL PRIMARY KEY,
     lab_dept INT REFERENCES departments(dept_id) ON DELETE CASCADE,
-    lab_number INT,
-    assistant_ids INT[]
+    lab_number INT
 );
 COMMENT ON TABLE labs IS 'Labs of RVCE';
 
