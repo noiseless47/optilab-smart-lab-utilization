@@ -1,4 +1,4 @@
-import sql from './db.js'
+const sql = require('./db.js')
 
 class MetricsModel {
     constructor() {
@@ -279,4 +279,4 @@ class MetricsModel {
     }
 }
 
-export default MetricsModel
+module.exports = MetricsModel

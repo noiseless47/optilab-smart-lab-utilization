@@ -41,3 +41,5 @@ router.post("/", (req, res) => {
 
 router.use('/:sysID', require('./sysID/sysID.routes'))
 router.use('/maintenance', require('./maintenance/maintenance.routes'))
+
+module.exports = router;

@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router({ mergeParams: true });
-const MetricsModel = require('../../../../../../../models/metrics_models').default;
+const MetricsModel = require('../../../../../../models/metrics_models');
 const metricsModel = new MetricsModel();
 
 // GET latest metrics for the system (dashboard overview)

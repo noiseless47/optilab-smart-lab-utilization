@@ -56,6 +56,6 @@ router.delete("/:deptID", (req, res) => {
     })
 })
 
-router.use('/:deptID', require('./:deptID'));
+router.use('/:deptID', require('./deptID/deptID.routes'));
 
 module.exports = router;

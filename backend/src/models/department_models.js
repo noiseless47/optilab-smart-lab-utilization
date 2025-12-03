@@ -1,4 +1,4 @@
-import sql from './db.js'
+const sql = require('./db.js')
 
 class DepartmentModel {
     constructor() {
@@ -267,27 +267,29 @@ class DepartmentModel {
         this.validateRequired(message, 'message');
         this.validateRequired(date_at, 'date_at');
 
-        query = this.sql`INSERT INTO maintainence_logs(system_id, lab_id, date_at, is_acknowledged, acknowledged_at, acknowledged_by, resolved_at, severity, message) VALUES(${system_id}, ${lab_id}, ${date_at}, ${isACK}, ${ACKat}, ${ACKby}, ${resolved_at}, ${severity}, ${message}) RETURNING *`
+        const query = this.sql`INSERT INTO maintainence_logs(system_id, lab_id, date_at, is_acknowledged, acknowledged_at, acknowledged_by, resolved_at, severity, message) VALUES(${system_id}, ${lab_id}, ${date_at}, ${isACK}, ${ACKat}, ${ACKby}, ${resolved_at}, ${severity}, ${message}) RETURNING *`
 
         return await this.query(query, 'Failed to add maintainence log')
     }
     
     async getMaintainenceByLabID(lab_id) {
         this.validateID(lab_id)
-        query = this.sql`SELECT * FROM maintainence_logs WHERE lab_id = ${lab_id}`
+        const query = this.sql`SELECT * FROM maintainence_logs WHERE lab_id = ${lab_id}`
         const result = await this.query(
             query,
             'Failed to get maintainence logs'
         )
+        return result
     }
 
     async getMaintainenceByID(maintainence_id) {
         this.validateID(maintainence_id)
-        query = this.sql`SELECT * FROM maintainence_logs WHERE maintainence_id = ${maintainence_id}`
+        const query = this.sql`SELECT * FROM maintainence_logs WHERE maintainence_id = ${maintainence_id}`
         const result = await this.query(
             query,
             'Failed to get maintainence log'
         )
+        return result
     }
 
     async updateMaintainence(maintainence_id, updates) {
@@ -303,4 +305,4 @@ class DepartmentModel {
     }
 }
 
-export default DepartmentModel
+module.exports = DepartmentModel

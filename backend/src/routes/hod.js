@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const departmentModel = require('../../models/department_models');
+const departmentModel = require('../models/department_models');
 
 router.get("/hod", (req,res) => {
     departmentModel.getAllHODs()
@@ -21,3 +21,5 @@ router.post("/hod", (req,res) => {
         res.status(500).json({error:err.message});
     });
 })
+
+module.exports = router;
