@@ -252,10 +252,27 @@ get_gpu_metrics() {
     
     # Check for AMD GPU (rocm-smi)
     if command_exists rocm-smi; then
-        local gpu_output=$(rocm-smi --showuse --showmeminfo vram --showtemp | grep -E "GPU\[0\]")
-        # Parse output (format varies)
-        # Simplified: return placeholder
-        echo "0.00 0.00 null"
+        # Get GPU utilization percentage
+        local gpu_util=$(rocm-smi --showuse 2>/dev/null | grep -oP 'GPU use \(%\):\s+\K\d+' | head -1)
+        
+        # Get GPU memory used in MB
+        local gpu_mem_mb=$(rocm-smi --showmeminfo vram 2>/dev/null | grep -oP 'GPU memory use \(MB\):\s+\K\d+' | head -1)
+        
+        # Get GPU temperature in Celsius
+        local gpu_temp=$(rocm-smi --showtemp 2>/dev/null | grep -oP 'Temperature \(Sensor edge\) \(C\):\s+\K[\d.]+' | head -1)
+        
+        # Convert memory from MB to GB
+        if [[ -n "$gpu_mem_mb" && "$gpu_mem_mb" != "0" ]]; then
+            local gpu_mem=$(awk "BEGIN {printf \"%.2f\", $gpu_mem_mb / 1024}")
+        else
+            local gpu_mem="0.00"
+        fi
+        
+        # Set defaults if any value is missing
+        gpu_util=${gpu_util:-0}
+        gpu_temp=${gpu_temp:-null}
+        
+        echo "$gpu_util $gpu_mem $gpu_temp"
         return
     fi
     
