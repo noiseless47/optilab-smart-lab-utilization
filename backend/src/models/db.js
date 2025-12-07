@@ -1,8 +1,6 @@
 const postgres = require('postgres')
 
-const connectionString = 'postgres://postgres:aayush@localhost:5433/optilab_mvp'
-
-const sql = postgres(connectionString, {
+const sql = postgres('postgres://aayush:Aayush1234@localhost:5433/optilab_mvp', {
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
 })
 

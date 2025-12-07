@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router({ mergeParams: true });
-const departmentModel = require('../../../models/department_models');
+const DepartmentModel = require('../../../models/department_models');
+const departmentModel = new DepartmentModel();
 
 // Middleware to validate department exists
 router.use(async (req, res, next) => {

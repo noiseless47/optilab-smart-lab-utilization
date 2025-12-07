@@ -32,7 +32,7 @@ class DepartmentModel {
         this.validateRequired(name, 'name')
         this.validateRequired(email, 'email')
         return await this.query(
-            this.sql`INSERT INTO hods(hod_name, hod_email) VALUES(${name}, ${email}) RETURNING hod_id`,
+            this.sql`INSERT INTO hods(hod_name, hod_email) VALUES(${name}, ${email}) RETURNING *`,
         )
     }
 

@@ -1,8 +1,9 @@
 const express = require('express');
 const router = express.Router();
-const departmentModel = require('../models/department_models');
+const DepartmentModel = require('../models/department_models');
+const departmentModel = new DepartmentModel();
 
-router.get("/hod", (req,res) => {
+router.get("/", (req,res) => {
     departmentModel.getAllHODs()
     .then((hod) => {
         res.status(200).json(hod);
@@ -11,7 +12,7 @@ router.get("/hod", (req,res) => {
         res.status(500).json({error:err.message});
     });
 })
-router.post("/hod", (req,res) => {
+router.post("/", (req,res) => {
     const {hod_name, hod_email} = req.body;
     departmentModel.addHOD(hod_name, hod_email)
     .then((hod) => {
