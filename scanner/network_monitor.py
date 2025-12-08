@@ -25,6 +25,28 @@ def expand_range(from_ip, to_ip):
 def db_connect(cfg):
     return psycopg2.connect(cfg["db"]["dsn"], cursor_factory=RealDictCursor)
 
+def validate_lab_config(conn, lab):
+    """Validate that lab and department exist and are correctly related."""
+    cur = conn.cursor()
+    try:
+        # Check if department exists
+        cur.execute("SELECT dept_id FROM departments WHERE dept_id = %s", (lab["dept_id"],))
+        if not cur.fetchone():
+            raise ValueError(f"Department {lab['dept_id']} does not exist in database")
+
+        # Check if lab exists and belongs to the department
+        cur.execute("SELECT lab_id FROM labs WHERE lab_id = %s AND lab_dept = %s",
+                   (lab["lab_id"], lab["dept_id"]))
+        if not cur.fetchone():
+            raise ValueError(f"Lab {lab['lab_id']} does not exist or does not belong to department {lab['dept_id']}")
+
+        print(f"    ✓ Lab {lab['lab_id']} (Dept {lab['dept_id']}) validated")
+    except Exception as e:
+        print(f"    ✗ Lab validation failed: {e}")
+        raise
+    finally:
+        cur.close()
+
 def run_cmd(cmd):
     try:
         result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=5)
@@ -105,6 +127,9 @@ def upsert_system(conn, ip, data, lab_id, dept_id):
     conn.commit()
 
 def discover_lab(lab, ssh_cfg, conn):
+    # Validate lab configuration
+    validate_lab_config(conn, lab)
+
     ips = expand_range(lab["ip_range"]["from"], lab["ip_range"]["to"])
     responsive_hosts = []
     print(f"[+] Scanning lab {lab['lab_id']} ({lab['ip_range']['from']}–{lab['ip_range']['to']})")

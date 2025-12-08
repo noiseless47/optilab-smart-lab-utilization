@@ -15,7 +15,7 @@
     "timeout": 3
   },
   "db": {
-    "dsn": "postgresql://aayush@localhost:5432/optilab_mvp"
+    "dsn": "postgresql://aayush@localhost:5433/optilab_mvp"
   },
   "scanner_interval_minutes": 30,
   "heartbeat_interval_minutes": 5,
