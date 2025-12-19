@@ -9,6 +9,17 @@
 
 set -e  # Exit on error
 
+# Script directory
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Source bastion host configuration (for SSH-based hostname resolution)
+if [[ -f "$SCRIPT_DIR/bastion_config.sh" ]]; then
+    source "$SCRIPT_DIR/bastion_config.sh"
+else
+    echo "Warning: bastion_config.sh not found, bastion host support disabled"
+    BASTION_ENABLED=false
+fi
+
 # Configuration
 DB_HOST="${DB_HOST:-localhost}"
 DB_PORT="${DB_PORT:-5432}"
@@ -22,6 +33,11 @@ DEPT_ID="${2:-}"
 SCAN_TYPE="${3:-ping}"
 PING_TIMEOUT=1
 PING_COUNT=2
+
+# SSH configuration for enhanced discovery
+SSH_USER="${SSH_USER:-admin}"
+SSH_KEY="${SSH_KEY:-$HOME/.ssh/id_rsa}"
+SSH_PORT="${SSH_PORT:-22}"
 
 # Colors for output
 RED='\033[0;31m'
@@ -61,9 +77,9 @@ Arguments:
 
 Environment Variables:
     DB_HOST         Database host (default: localhost)
-    DB_PORT         Database port (default: 5433)
-    DB_NAME         Database name (default: optilab_mvp)
-    DB_USER         Database user (default: aayush)
+    DB_PORT         Database port (default: 5432)
+    DB_NAME         Database name (default: optilab)
+    DB_USER         Database user (default: postgres)
     DB_PASSWORD     Database password
 
 Examples:
@@ -226,7 +242,7 @@ ping_scan() {
             log_success "✓ $ip is alive"
             
             # Try to get hostname (non-blocking)
-            hostname=$(timeout 2 host "$ip" 2>/dev/null | awk '{print $NF}' | sed 's/\.$//' || echo "unknown")
+            hostname=$(get_hostname_for_ip "$ip")
             
             # Insert/update system in database (discovered state)
             insert_discovered_system "$ip" "$hostname"
@@ -242,6 +258,32 @@ ping_scan() {
     fi
     
     echo "$alive_systems"
+}
+
+# Get hostname for IP address (tries DNS and SSH via bastion)
+get_hostname_for_ip() {
+    local ip="$1"
+    local hostname="unknown"
+    
+    # Try DNS lookup first
+    hostname=$(timeout 2 host "$ip" 2>/dev/null | awk '{print $NF}' | sed 's/\.$//' || echo "")
+    
+    # If DNS fails, try SSH to get hostname (via bastion if enabled)
+    if [[ -z "$hostname" ]] || [[ "$hostname" == "unknown" ]]; then
+        if [[ -f "$SSH_KEY" ]]; then
+            local ssh_cmd="ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o BatchMode=yes -i $SSH_KEY -p $SSH_PORT"
+            
+            # Add bastion ProxyJump if enabled
+            if is_bastion_enabled; then
+                ssh_cmd="$ssh_cmd -J ${BASTION_USER}@${BASTION_HOST}:${BASTION_PORT}"
+            fi
+            
+            # Try to get hostname via SSH
+            hostname=$($ssh_cmd "${SSH_USER}@${ip}" "hostname" 2>/dev/null || echo "unknown")
+        fi
+    fi
+    
+    echo "$hostname"
 }
 
 # Insert discovered system into database

@@ -70,7 +70,8 @@ COMMENT ON TABLE departments IS 'Academic departments and their network configur
 CREATE TABLE IF NOT EXISTS labs (
     lab_id SERIAL PRIMARY KEY,
     lab_dept INT REFERENCES departments(dept_id) ON DELETE CASCADE,
-    lab_number INT
+    lab_number INT,
+    assistant_ids INT[]
 );
 COMMENT ON TABLE labs IS 'Labs of RVCE';
 
@@ -88,7 +89,7 @@ COMMENT ON TABLE lab_assistants IS 'Lab Assistants of RVCE';
 CREATE TABLE IF NOT EXISTS network_scans (
     scan_id SERIAL PRIMARY KEY,
     dept_id INT REFERENCES departments(dept_id) ON DELETE CASCADE,
-    scan_type VARCHAR(50) NOT NULL DEFAULT 'nmap',            -- 'nmap', 'arp', 'manual'
+    scan_type VARCHAR(50) NOT NULL,            -- 'nmap', 'arp', 'manual'
     target_range VARCHAR(100) NOT NULL,        -- we specify the range of IPs of a particular lab
     scan_start TIMESTAMPTZ NOT NULL,
     scan_end TIMESTAMPTZ,
@@ -108,25 +109,25 @@ CREATE INDEX idx_network_scans_status ON network_scans(status);
 CREATE INDEX idx_network_scans_start ON network_scans(scan_start DESC);
 
 -- COLLECTION CREDENTIALS (Secure Vault)
--- -- Enable encryption extension
--- CREATE EXTENSION IF NOT EXISTS pgcrypto;
+-- Enable encryption extension
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
--- CREATE TABLE IF NOT EXISTS collection_credentials (
---     credential_id SERIAL PRIMARY KEY,
---     credential_name VARCHAR(100) NOT NULL UNIQUE,
---     credential_type VARCHAR(50) NOT NULL,      -- 'ssh', 'wmi', 'snmp'
---     username VARCHAR(255),
---     password_encrypted BYTEA,                  -- Encrypted password
---     ssh_key_path TEXT,
---     snmp_community VARCHAR(100),
---     additional_config JSONB,                   -- Extra parameters
---     is_active BOOLEAN DEFAULT TRUE,
---     created_at TIMESTAMPTZ DEFAULT NOW(),
---     last_used TIMESTAMPTZ,
---     used_count INT DEFAULT 0
--- );
+CREATE TABLE IF NOT EXISTS collection_credentials (
+    credential_id SERIAL PRIMARY KEY,
+    credential_name VARCHAR(100) NOT NULL UNIQUE,
+    credential_type VARCHAR(50) NOT NULL,      -- 'ssh', 'wmi', 'snmp'
+    username VARCHAR(255),
+    password_encrypted BYTEA,                  -- Encrypted password
+    ssh_key_path TEXT,
+    snmp_community VARCHAR(100),
+    additional_config JSONB,                   -- Extra parameters
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    last_used TIMESTAMPTZ,
+    used_count INT DEFAULT 0
+);
 
--- COMMENT ON TABLE collection_credentials IS 'Encrypted credentials for remote system access';
+COMMENT ON TABLE collection_credentials IS 'Encrypted credentials for remote system access';
 
 -- Helper functions for encryption/decryption
 -- Usage: pgp_sym_encrypt('password', 'master_key')
@@ -142,7 +143,7 @@ CREATE TABLE IF NOT EXISTS systems (
     -- Network Identification
     hostname VARCHAR(255) NOT NULL,
     ip_address INET NOT NULL UNIQUE,           
-    mac_address MACADDR UNIQUE,                       
+    mac_address MACADDR,                       
     
     -- System Information
     -- os_type VARCHAR(50),                       
@@ -325,7 +326,6 @@ CREATE INDEX idx_metrics_system_time ON metrics(system_id, timestamp DESC);
 CREATE TABLE IF NOT EXISTS maintainence_logs (
     maintainence_id BIGSERIAL PRIMARY KEY,
     system_id INT REFERENCES systems(system_id) ON DELETE CASCADE,
-    lab_id INT REFERENCES labs(lab_id) ON DELETE CASCADE,
     date_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     is_acknowledged BOOLEAN DEFAULT FALSE,
     acknowledged_at TIMESTAMPTZ,
