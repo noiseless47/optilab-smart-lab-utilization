@@ -69,7 +69,6 @@ def call_back(ch, method, properties, body):
         # requeue message for retry
         ch.basic_nack(delivery_tag=method.delivery_tag, requeue=True)
 
-channel.start_consuming()
 print(" [*] Waiting for messages. To exit press CTRL+C")
 channel.basic_qos(prefetch_count=10)
 channel.basic_consume(queue=QUEUE_NAME, on_message_callback=call_back, auto_ack=False)
