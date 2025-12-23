@@ -62,14 +62,19 @@ def ssh_identify(ip, ssh_cfg):
     script_path = os.path.join(os.path.dirname(__file__), "get_system_info.sh")
     remote_script = "/tmp/get_system_info.sh"
 
+    print(f"    [SSH] Attempting connection to {ip}...")
+
     # Transfer script
     scp_cmd = (
         f"scp -oBatchMode=yes "
         f"-oConnectTimeout={ssh_cfg['timeout']} "
         f"-i {ssh_cfg['private_key']} {script_path} {ssh_cfg['user']}@{ip}:{remote_script}"
     )
-    if run_cmd(scp_cmd) is None:
+    scp_result = run_cmd(scp_cmd)
+    if scp_result is None:
+        print(f"    [SSH] ✗ Script transfer failed for {ip}")
         return None
+    print(f"    [SSH] ✓ Script transferred to {ip}")
 
     # Run script
     ssh_cmd = (
@@ -79,6 +84,22 @@ def ssh_identify(ip, ssh_cfg):
         f"'bash {remote_script} --json'"
     )
     output = run_cmd(ssh_cmd)
+
+    # Debug: Check if output contains JSON
+    if output and output.strip().startswith('{'):
+        print(f"    [SSH] ✓ JSON output detected")
+    else:
+        print(f"    [SSH] ⚠ Non-JSON output received, checking script...")
+        # Try running without --json to see what we get
+        debug_cmd = (
+            f"ssh -oBatchMode=yes "
+            f"-oConnectTimeout={ssh_cfg['timeout']} "
+            f"-i {ssh_cfg['private_key']} {ssh_cfg['user']}@{ip} "
+            f"'bash {remote_script} | head -20'"
+        )
+        debug_output = run_cmd(debug_cmd)
+        print(f"    [SSH] Debug output: {debug_output[:200]}...")
+        return None
 
     # Cleanup
     cleanup_cmd = (
@@ -90,41 +111,67 @@ def ssh_identify(ip, ssh_cfg):
     run_cmd(cleanup_cmd)
 
     if not output:
+        print(f"    [SSH] ✗ No output received from {ip}")
         return None
+
+    print(f"    [SSH] ✓ Received data from {ip}")
 
     try:
         data = json.loads(output)
+        print(f"    [SSH] ✓ JSON parsed successfully for {ip}")
         return data
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as e:
+        print(f"    [SSH] ✗ JSON parsing failed for {ip}: {e}")
+        print(f"    [SSH] Raw output: {output[:200]}...")
         return None
 
 def upsert_system(conn, ip, data, lab_id, dept_id):
+    print(f"    [DB] Inserting system {ip} into lab {lab_id}, dept {dept_id}")
+
     cur = conn.cursor()
-    cur.execute("""
-        INSERT INTO systems (
-            lab_id, dept_id, hostname, ip_address, mac_address,
-            cpu_model, cpu_cores, ram_total_gb, disk_total_gb, gpu_model, gpu_memory,
-            status, notes, updated_at
-        )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'active', %s, NOW())
-        ON CONFLICT (ip_address) DO UPDATE
-        SET hostname = EXCLUDED.hostname,
-            mac_address = EXCLUDED.mac_address,
-            cpu_model = EXCLUDED.cpu_model,
-            cpu_cores = EXCLUDED.cpu_cores,
-            ram_total_gb = EXCLUDED.ram_total_gb,
-            disk_total_gb = EXCLUDED.disk_total_gb,
-            gpu_model = EXCLUDED.gpu_model,
-            gpu_memory = EXCLUDED.gpu_memory,
-            status = 'active',
-            updated_at = NOW();
-    """, (
-        lab_id, dept_id, data.get("hostname"), ip, data.get("mac_address"),
-        data.get("cpu_model"), data.get("cpu_cores"), data.get("ram_total_gb"),
-        data.get("disk_total"), data.get("gpu_model"), data.get("gpu_memory_gb"),
-        None
-    ))
-    conn.commit()
+    try:
+        cur.execute("""
+            INSERT INTO systems (
+                lab_id, dept_id, hostname, ip_address, mac_address,
+                cpu_model, cpu_cores, ram_total_gb, disk_total_gb, gpu_model, gpu_memory,
+                status, notes, updated_at
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'active', %s, NOW())
+            ON CONFLICT (ip_address) DO UPDATE
+            SET hostname = EXCLUDED.hostname,
+                mac_address = EXCLUDED.mac_address,
+                cpu_model = EXCLUDED.cpu_model,
+                cpu_cores = EXCLUDED.cpu_cores,
+                ram_total_gb = EXCLUDED.ram_total_gb,
+                disk_total_gb = EXCLUDED.disk_total_gb,
+                gpu_model = EXCLUDED.gpu_model,
+                gpu_memory = EXCLUDED.gpu_memory,
+                status = 'active',
+                updated_at = NOW()
+            RETURNING system_id;
+        """, (
+            lab_id, dept_id, data.get("hostname"), ip, data.get("mac_address"),
+            data.get("cpu_model"), data.get("cpu_cores"), data.get("ram_total_gb"),
+            data.get("disk_total_gb"), data.get("gpu_model"), data.get("gpu_memory"),
+            None
+        ))
+
+        result = cur.fetchone()
+        if result:
+            system_id = result['system_id'] if isinstance(result, dict) else result[0]
+            print(f"    [DB] ✓ System inserted/updated with ID: {system_id}")
+        else:
+            print(f"    [DB] ✗ No result returned from RETURNING clause for {ip}")
+
+        conn.commit()
+        print(f"    [DB] ✓ Transaction committed for {ip}")
+
+    except Exception as e:
+        conn.rollback()
+        print(f"    [DB] ✗ Transaction rolled back for {ip}: {e}")
+        raise
+    finally:
+        cur.close()
 
 def discover_lab(lab, ssh_cfg, conn):
     # Validate lab configuration
