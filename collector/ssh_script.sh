@@ -9,6 +9,17 @@
 
 set -e  # Exit on error
 
+# Script paths
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Source bastion host configuration
+if [[ -f "$SCRIPT_DIR/bastion_config.sh" ]]; then
+    source "$SCRIPT_DIR/bastion_config.sh"
+else
+    echo "Warning: bastion_config.sh not found, bastion host support disabled"
+    BASTION_ENABLED=false
+fi
+
 # Configuration
 DB_HOST="${DB_HOST:-localhost}"
 DB_PORT="${DB_PORT:-5432}"
@@ -23,8 +34,7 @@ SSH_PORT="${SSH_PORT:-22}"
 SSH_TIMEOUT="${SSH_TIMEOUT:-10}"
 SSH_OPTIONS="-o StrictHostKeyChecking=no -o ConnectTimeout=$SSH_TIMEOUT -o BatchMode=yes"
 
-# Script paths
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Metrics collector script paths
 METRICS_COLLECTOR_SCRIPT="$SCRIPT_DIR/metrics_collector.sh"
 REMOTE_SCRIPT_PATH="/tmp/metrics_collector.sh"
 
@@ -272,11 +282,20 @@ get_target_systems() {
     echo "$result"
 }
 
-# Test SSH connection to a system
+# Test SSH connection to a system (via bastion if enabled)
 test_ssh_connection() {
     local ip="$1"
     
-    if ssh $SSH_OPTIONS -i "$SSH_KEY" -p "$SSH_PORT" "${SSH_USER}@${ip}" "exit" 2>/dev/null; then
+    # Build SSH command with bastion support
+    local ssh_cmd="ssh $SSH_OPTIONS -i $SSH_KEY -p $SSH_PORT"
+    
+    # Add bastion ProxyJump if enabled
+    if is_bastion_enabled; then
+        ssh_cmd="$ssh_cmd -J ${BASTION_USER}@${BASTION_HOST}:${BASTION_PORT}"
+        log_bastion_info "Testing connection to $ip via bastion"
+    fi
+    
+    if $ssh_cmd "${SSH_USER}@${ip}" "exit" 2>/dev/null; then
         return 0
     else
         return 1
@@ -291,6 +310,17 @@ collect_from_system() {
     
     log_info "Collecting from: $hostname ($ip) [ID: $system_id]"
     
+    # Build SSH and SCP commands with bastion support
+    local ssh_cmd="ssh $SSH_OPTIONS -i $SSH_KEY -p $SSH_PORT"
+    local scp_cmd="scp $SSH_OPTIONS -i $SSH_KEY -P $SSH_PORT"
+    
+    # Add bastion ProxyJump if enabled
+    if is_bastion_enabled; then
+        ssh_cmd="$ssh_cmd -J ${BASTION_USER}@${BASTION_HOST}:${BASTION_PORT}"
+        scp_cmd="$scp_cmd -o ProxyJump=${BASTION_USER}@${BASTION_HOST}:${BASTION_PORT}"
+        log_bastion_info "  └─ Using bastion: ${BASTION_HOST}"
+    fi
+    
     # Test SSH connection
     if ! test_ssh_connection "$ip"; then
         log_warning "  └─ SSH connection failed, skipping"
@@ -300,14 +330,14 @@ collect_from_system() {
     
     # Transfer metrics collector script
     log_info "  └─ Transferring collector script..."
-    if ! scp $SSH_OPTIONS -i "$SSH_KEY" -P "$SSH_PORT" "$METRICS_COLLECTOR_SCRIPT" "${SSH_USER}@${ip}:${REMOTE_SCRIPT_PATH}" &>/dev/null; then
+    if ! $scp_cmd "$METRICS_COLLECTOR_SCRIPT" "${SSH_USER}@${ip}:${REMOTE_SCRIPT_PATH}" &>/dev/null; then
         log_error "  └─ Failed to transfer script"
         return 1
     fi
     
     # Execute collector script and capture output
     log_info "  └─ Executing collector script..."
-    local metrics_output=$(ssh $SSH_OPTIONS -i "$SSH_KEY" -p "$SSH_PORT" "${SSH_USER}@${ip}" "bash $REMOTE_SCRIPT_PATH" 2>/dev/null)
+    local metrics_output=$($ssh_cmd "${SSH_USER}@${ip}" "bash $REMOTE_SCRIPT_PATH" 2>/dev/null)
     
     if [[ -z "$metrics_output" ]]; then
         log_error "  └─ Failed to collect metrics (empty output)"
@@ -315,7 +345,7 @@ collect_from_system() {
     fi
     
     # Cleanup remote script
-    ssh $SSH_OPTIONS -i "$SSH_KEY" -p "$SSH_PORT" "${SSH_USER}@${ip}" "rm -f $REMOTE_SCRIPT_PATH" &>/dev/null || true
+    $ssh_cmd "${SSH_USER}@${ip}" "rm -f $REMOTE_SCRIPT_PATH" &>/dev/null || true
     
     # Parse JSON output
     if ! echo "$metrics_output" | jq . &>/dev/null; then
@@ -440,6 +470,19 @@ main() {
     log_info "SSH User: $SSH_USER"
     log_info "SSH Key: $SSH_KEY"
     log_info "Message Queue: $([[ "$QUEUE_ENABLED" == "true" ]] && echo "Enabled" || echo "Disabled")"
+    
+    # Display bastion configuration
+    if is_bastion_enabled; then
+        log_info "Bastion Host: ${BASTION_USER}@${BASTION_HOST}:${BASTION_PORT} (ENABLED)"
+        
+        # Test bastion connection
+        if ! test_bastion_connection; then
+            log_error "Cannot connect to bastion host. Please check configuration."
+            exit 1
+        fi
+    else
+        log_warning "Bastion Host: DISABLED (Direct SSH connections)"
+    fi
     echo
     
     # Check dependencies
