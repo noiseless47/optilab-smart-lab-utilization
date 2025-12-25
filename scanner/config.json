@@ -11,11 +11,11 @@
   ],
   "ssh": {
     "user": "rvce",
-    "private_key": "/home/collector/.ssh/id_ed25519",
+    "private_key": "/home/aayush/.ssh/target_key",
     "timeout": 3
   },
   "db": {
-    "dsn": "postgresql://aayush@localhost:5433/optilab_mvp"
+    "dsn": "postgres://aayush:Aayush1234@localhost:5433/optilab_mvp"
   },
   "scanner_interval_minutes": 30,
   "heartbeat_interval_minutes": 5,

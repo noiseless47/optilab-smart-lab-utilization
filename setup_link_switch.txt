@@ -1,3 +1,5 @@
+sudo nmcli device set eno1 managed no
+sudo systemctl restart NetworkManager
 sudo ip addr add 192.168.0.13/24 dev eno1
 sudo ip link set eno1 up
 sudo ip route add default via 192.168.0.1 dev eno1
