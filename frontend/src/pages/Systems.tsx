@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Search, Filter, Server, Activity, Clock } from 'lucide-react'
+import { Search, Filter, Server, Clock } from 'lucide-react'
 
 export default function Systems() {
   const [searchQuery, setSearchQuery] = useState('')
