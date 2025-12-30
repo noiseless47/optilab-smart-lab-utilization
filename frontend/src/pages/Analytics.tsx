@@ -83,21 +83,6 @@ export default function Analytics() {
     )
   }
 
-  if (error) {
-    return (
-      <div className="max-w-7xl mx-auto px-6 py-12">
-        <div className="mb-8">
-          <h1 className="text-4xl font-bold text-gray-900 mb-2">Analytics</h1>
-          <p className="text-gray-600">Advanced insights and resource optimization</p>
-        </div>
-        <div className="card p-8 text-center">
-          <p className="text-red-600 mb-4">{error}</p>
-          <button onClick={fetchAnalytics} className="btn btn-primary">Try Again</button>
-        </div>
-      </div>
-    )
-  }
-
   // Get top consumers by CPU
   const topCpuConsumers = [...systems]
     .sort((a, b) => b.cpu - a.cpu)

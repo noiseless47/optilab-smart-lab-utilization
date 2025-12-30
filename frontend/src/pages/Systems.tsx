@@ -152,14 +152,7 @@ export default function Systems() {
         <p className="text-gray-600">Monitor and manage all lab systems</p>
       </div>
 
-      {error && (
-        <div className="card p-8 text-center mb-8">
-          <p className="text-red-600 mb-4">{error}</p>
-          <button onClick={fetchSystems} className="btn btn-primary">Try Again</button>
-        </div>
-      )}
-
-      {/* Search and Filter */}
+      {/* Search and Filter */
       <div className="flex items-center space-x-4 mb-8">
         <div className="flex-1 relative">
           <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
@@ -218,7 +211,25 @@ export default function Systems() {
         </div>
       </div>
 
-      {/* Advanced Filter Panel */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+        <div className="card p-6">
+          <div className="text-sm text-gray-500 mb-1">Total Systems</div>
+          <div className="text-3xl font-bold text-gray-900">{sortedSystems.length}</div>
+        </div>
+        <div className="card p-6">
+          <div className="text-sm text-gray-500 mb-1">Online</div>
+          <div className="text-3xl font-bold text-green-600">{sortedSystems.filter(s => s.status === 'active' || s.status === 'online').length}</div>
+        </div>
+        <div className="card p-6">
+          <div className="text-sm text-gray-500 mb-1">Warnings</div>
+          <div className="text-3xl font-bold text-yellow-600">{sortedSystems.filter(s => s.cpu > 80 || s.memory > 80).length}</div>
+        </div>
+        <div className="card p-6">
+          <div className="text-sm text-gray-500 mb-1">Offline</div>
+          <div className="text-3xl font-bold text-gray-600">{sortedSystems.filter(s => s.status === 'offline').length}</div>
+        </div>
+      </div>
+
       {showFilters && (
         <div className="card mb-6 overflow-hidden">
           <div className="bg-gray-50 px-6 py-4 border-b border-gray-200 flex items-center justify-between">

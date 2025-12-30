@@ -135,21 +135,6 @@ export default function Alerts() {
     )
   }
 
-  if (error) {
-    return (
-      <div className="max-w-7xl mx-auto px-6 py-12">
-        <div className="mb-8">
-          <h1 className="text-4xl font-bold text-gray-900 mb-2">Alerts</h1>
-          <p className="text-gray-600">Real-time system alerts and notifications</p>
-        </div>
-        <div className="card p-8 text-center">
-          <p className="text-red-600 mb-4">{error}</p>
-          <button onClick={fetchAlerts} className="btn btn-primary">Try Again</button>
-        </div>
-      </div>
-    )
-  }
-
   const activeAlerts = alerts.filter(a => !isAlertDismissed(a.id))
   const criticalCount = activeAlerts.filter(a => a.severity === 'critical').length
   const warningCount = activeAlerts.filter(a => a.severity === 'warning').length
