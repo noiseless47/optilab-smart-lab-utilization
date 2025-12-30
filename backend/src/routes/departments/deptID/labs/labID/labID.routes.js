@@ -30,33 +30,6 @@ router.get("/systems", (req, res) => {
     })
 })
 
-router.get("/systems", (req, res) => {
-    const labID = req.params.labID;
-    departmentModel.getSystemsByLab(labID)
-    .then((system) => {
-        res.status(200).json(system);
-    })
-    .catch((err)=>{
-        res.status(500).json({error:err.message});
-        console.error("Error:", err.message);
-    })
-})
-
-router.get("/:sysID", (req, res) => {
-    const sysID = req.params.sysID;
-    departmentModel.getSystemByID(sysID)
-    .then((system) => {
-        if (!system) {
-            return res.status(404).json({ error: 'System not found' });
-        }
-        res.status(200).json(system);
-    })
-    .catch((err)=>{
-        res.status(500).json({error:err.message});
-        console.error("Error:", err.message);
-    })
-})
-
 router.get("/assistants", (req, res) => {
     const labID = req.params.labID;
     departmentModel.getLabAssistantsByLab(labID)
@@ -82,7 +55,11 @@ router.post("/", (req, res) => {
     })
 })
 
-router.use('/:sysID', require('./sysID/sysID.routes'))
+// IMPORTANT: Must mount specific routes BEFORE parameter routes
+// Use string path for maintenance to ensure it's checked first
 router.use('/maintenance', require('./maintenance/maintenance.routes'))
+
+// Mount system routes last so /:sysID doesn't catch everything
+router.use('/:sysID', require('./sysID/sysID.routes'))
 
 module.exports = router;

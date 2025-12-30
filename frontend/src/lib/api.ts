@@ -387,6 +387,21 @@ export const createLabMaintenanceLog = async (
   return response.data
 }
 
+export const updateLabMaintenanceLog = async (
+  deptId: number,
+  labId: number,
+  logId: number,
+  data: {
+    is_acknowledged?: boolean
+    acknowledged_at?: string
+    acknowledged_by?: string
+    resolved_at?: string
+  }
+) => {
+  const response = await api.put(`/departments/${deptId}/labs/${labId}/maintenance/${logId}`, data)
+  return response.data
+}
+
 export default api
 
 export interface Lab {

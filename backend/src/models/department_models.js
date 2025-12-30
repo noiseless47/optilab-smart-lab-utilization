@@ -310,11 +310,29 @@ class DepartmentModel {
         const fields = Object.keys(updates).filter(key => updates[key] !== undefined)
         if (fields.length === 0) throw new Error('No fields to update')
 
-        const setClause = fields.map(field => `${field} = ${updates[field]}`).join(', ')
-        return await this.query(
-            this.sql`UPDATE maintainence_logs SET ${setClause} WHERE maintainence_id = ${maintainence_id} RETURNING *`,
-            'Failed to update maintainence log'
-        )
+        // Build dynamic SQL query using the sql template
+        // We'll use string literals for field names and parameterized values for data
+        let query = 'UPDATE maintainence_logs SET '
+        const values = []
+        const setClauses = []
+        
+        fields.forEach((field) => {
+            setClauses.push(`${field} = $${values.length + 1}`)
+            values.push(updates[field])
+        })
+        
+        const finalId = values.length + 1
+        query += setClauses.join(', ') + ` WHERE maintainence_id = $${finalId} RETURNING *`
+        values.push(maintainence_id)
+        
+        try {
+            const result = await this.sql.unsafe(query, values)
+            return Array.isArray(result) ? result : [result]
+        } catch (error) {
+            console.error('Failed to update maintainence log', error.message)
+            console.error('Full error:', error)
+            throw new Error(`Failed to update maintainence log: ${error.message}`)
+        }
     }
 
     async getMaintainenceBySystemID(system_id) {

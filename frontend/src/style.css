@@ -29,6 +29,18 @@
   * {
     box-sizing: border-box;
   }
+
+  input,
+  textarea,
+  select {
+    background-color: #ffffff;
+    color: #1a1a1a;
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: #9ca3af;
+  }
 }
 
 @layer utilities {

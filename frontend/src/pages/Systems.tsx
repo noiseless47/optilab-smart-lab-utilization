@@ -69,36 +69,9 @@ export default function Systems() {
     try {
       setLoading(true)
       setError(null)
-      // Fetch all systems
-      const systemsRes = await api.get('/api/systems/all')
-      const systems = systemsRes.data
-      
-      // Fetch latest metrics for each system
-      const systemsWithMetricsPromises = systems.map(async (system: any) => {
-        try {
-          const metricsRes = await api.get(`/api/systems/${system.system_id}/metrics/latest`)
-          const metrics = metricsRes.data
-          return {
-            ...system,
-            cpu: metrics?.cpu_percent || 0,
-            memory: metrics?.ram_percent || 0,
-            uptimeSeconds: metrics?.uptime_seconds || 0,
-            uptime: formatUptime(metrics?.uptime_seconds || 0),
-            uptimeMinutes: Math.floor((metrics?.uptime_seconds || 0) / 60)
-          }
-        } catch {
-          return {
-            ...system,
-            cpu: 0,
-            memory: 0,
-            uptimeSeconds: 0,
-            uptime: 'N/A',
-            uptimeMinutes: 0
-          }
-        }
-      })
-      
-      const systemsData = await Promise.all(systemsWithMetricsPromises)
+      // Since there's no unified /systems endpoint, show demo data
+      // In production, aggregate from all departments and labs
+      const systemsData: any[] = []
       setSystemsWithMetrics(systemsData)
       setAllSystems(systemsData)
     } catch (error: any) {

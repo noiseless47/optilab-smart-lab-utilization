@@ -216,7 +216,7 @@ export default function Departments() {
               type="text"
               value={formData.dept_name}
               onChange={(e) => setFormData({ ...formData, dept_name: e.target.value })}
-              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+              className="w-full px-4 py-2.5 bg-white text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
               placeholder="e.g., Information Science & Engineering"
             />
           </div>
@@ -228,7 +228,7 @@ export default function Departments() {
               type="text"
               value={formData.dept_code}
               onChange={(e) => setFormData({ ...formData, dept_code: e.target.value })}
-              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+              className="w-full px-4 py-2.5 bg-white text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
               placeholder="e.g., ISE"
             />
           </div>
@@ -238,7 +238,7 @@ export default function Departments() {
               type="text"
               value={formData.vlan_id}
               onChange={(e) => setFormData({ ...formData, vlan_id: e.target.value })}
-              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+              className="w-full px-4 py-2.5 bg-white text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
               placeholder="e.g., VLAN100"
             />
           </div>
@@ -248,7 +248,7 @@ export default function Departments() {
               type="text"
               value={formData.subnet_cidr}
               onChange={(e) => setFormData({ ...formData, subnet_cidr: e.target.value })}
-              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+              className="w-full px-4 py-2.5 bg-white text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
               placeholder="e.g., 10.30.0.0/16"
             />
           </div>
@@ -257,7 +257,7 @@ export default function Departments() {
             <textarea
               value={formData.description}
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+              className="w-full px-4 py-2.5 bg-white text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
               rows={3}
               placeholder="Brief description of the department"
             />

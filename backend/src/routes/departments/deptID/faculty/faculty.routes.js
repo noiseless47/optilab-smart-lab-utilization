@@ -17,7 +17,7 @@ router.get("/", (req, res) => {
 
 router.post("/", (req, res) => {
     const deptID = req.params.deptID;
-    const {name, email, labID} = req.body;
+    const {name, email, labID = null} = req.body;
     departmentModel.addLabAssistant(name, email, deptID, labID)
     .then((assistant) => {
         res.status(201).json(assistant);

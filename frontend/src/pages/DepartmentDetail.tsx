@@ -35,6 +35,8 @@ interface MaintenanceLog {
   severity: string
   message: string
   is_acknowledged: boolean
+  acknowledged_at?: string
+  acknowledged_by?: string
   resolved_at?: string
 }
 
@@ -52,8 +54,10 @@ export default function DepartmentDetail() {
   const [showAssistantModal, setShowAssistantModal] = useState(false)
   const [showDeleteLabDialog, setShowDeleteLabDialog] = useState(false)
   const [showDeleteAssistantDialog, setShowDeleteAssistantDialog] = useState(false)
+  const [showMaintenanceDetailModal, setShowMaintenanceDetailModal] = useState(false)
   const [selectedLab, setSelectedLab] = useState<Lab | null>(null)
   const [selectedAssistant, setSelectedAssistant] = useState<LabAssistant | null>(null)
+  const [selectedMaintenance, setSelectedMaintenance] = useState<MaintenanceLog | null>(null)
   const [toasts, setToasts] = useState<ToastMessage[]>([])
   
   const [labNumber, setLabNumber] = useState('')
@@ -61,6 +65,8 @@ export default function DepartmentDetail() {
     name: '',
     email: '',
   })
+  const [acknowledgedBy, setAcknowledgedBy] = useState('')
+  const [updatingMaintenanceId, setUpdatingMaintenanceId] = useState<number | null>(null)
 
   const addToast = (message: string, type: 'success' | 'error' | 'info' | 'warning') => {
     const id = Date.now().toString()
@@ -187,6 +193,63 @@ export default function DepartmentDetail() {
 
   const handleLabClick = (labId: number) => {
     navigate(`/departments/${deptId}/labs/${labId}`)
+  }
+
+  const handleAcknowledgeMaintenance = async () => {
+    if (!selectedMaintenance) return
+
+    if (!acknowledgedBy.trim()) {
+      addToast('Please enter your name', 'error')
+      return
+    }
+
+    try {
+      setUpdatingMaintenanceId(selectedMaintenance.maintainence_id)
+      await api.put(
+        `/departments/${deptId}/labs/maintenance/${selectedMaintenance.maintainence_id}`,
+        {
+          is_acknowledged: true,
+          acknowledged_at: new Date().toISOString(),
+          acknowledged_by: acknowledgedBy,
+        }
+      )
+      addToast('Maintenance log acknowledged', 'success')
+      setAcknowledgedBy('')
+      setShowMaintenanceDetailModal(false)
+      fetchDepartmentData()
+    } catch (error) {
+      console.error('Failed to acknowledge maintenance:', error)
+      addToast('Failed to acknowledge maintenance log', 'error')
+    } finally {
+      setUpdatingMaintenanceId(null)
+    }
+  }
+
+  const handleResolveMaintenance = async () => {
+    if (!selectedMaintenance) return
+
+    try {
+      setUpdatingMaintenanceId(selectedMaintenance.maintainence_id)
+      await api.put(
+        `/departments/${deptId}/labs/maintenance/${selectedMaintenance.maintainence_id}`,
+        {
+          resolved_at: new Date().toISOString(),
+        }
+      )
+      addToast('Maintenance log marked as resolved', 'success')
+      setShowMaintenanceDetailModal(false)
+      fetchDepartmentData()
+    } catch (error) {
+      console.error('Failed to resolve maintenance:', error)
+      addToast('Failed to mark maintenance as resolved', 'error')
+    } finally {
+      setUpdatingMaintenanceId(null)
+    }
+  }
+
+  const openMaintenanceDetail = (log: MaintenanceLog) => {
+    setSelectedMaintenance(log)
+    setShowMaintenanceDetailModal(true)
   }
 
   if (loading) {
@@ -339,10 +402,14 @@ export default function DepartmentDetail() {
         ) : (
           <div className="space-y-3">
             {maintenanceLogs.map((log) => (
-              <div key={log.maintainence_id} className="card p-4">
+              <button
+                key={log.maintainence_id}
+                onClick={() => openMaintenanceDetail(log)}
+                className="card p-4 w-full text-left hover:shadow-md transition-shadow"
+              >
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
-                    <div className="flex items-center space-x-2 mb-2">
+                    <div className="flex items-center space-x-2 mb-2 flex-wrap gap-2">
                       <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
                         log.severity === 'critical' ? 'bg-red-100 text-red-700' :
                         log.severity === 'high' ? 'bg-orange-100 text-orange-700' :
@@ -367,12 +434,127 @@ export default function DepartmentDetail() {
                       System ID: {log.system_id} • {new Date(log.date_at).toLocaleDateString()}
                     </div>
                   </div>
+                  <ArrowRight className="w-4 h-4 text-gray-400 ml-4 flex-shrink-0" />
                 </div>
-              </div>
+              </button>
             ))}
           </div>
         )}
       </div>
+
+      {/* Maintenance Detail Modal */}
+      <Modal
+        isOpen={showMaintenanceDetailModal}
+        onClose={() => {
+          setShowMaintenanceDetailModal(false)
+          setSelectedMaintenance(null)
+          setAcknowledgedBy('')
+        }}
+        title="Maintenance Log Details"
+        size="md"
+      >
+        {selectedMaintenance && (
+          <div className="space-y-4">
+            {/* Log Information */}
+            <div className="border-b border-gray-200 pb-4">
+              <div className="mb-3">
+                <h3 className="text-sm font-medium text-gray-700 mb-1">Severity</h3>
+                <span className={`inline-block px-3 py-1 text-xs font-semibold rounded-full ${
+                  selectedMaintenance.severity === 'critical' ? 'bg-red-100 text-red-700' :
+                  selectedMaintenance.severity === 'high' ? 'bg-orange-100 text-orange-700' :
+                  selectedMaintenance.severity === 'medium' ? 'bg-yellow-100 text-yellow-700' :
+                  'bg-blue-100 text-blue-700'
+                }`}>
+                  {selectedMaintenance.severity}
+                </span>
+              </div>
+              <div className="mb-3">
+                <h3 className="text-sm font-medium text-gray-700 mb-1">Message</h3>
+                <p className="text-gray-900">{selectedMaintenance.message}</p>
+              </div>
+              <div className="mb-3">
+                <h3 className="text-sm font-medium text-gray-700 mb-1">System ID</h3>
+                <p className="text-gray-900">{selectedMaintenance.system_id}</p>
+              </div>
+              <div>
+                <h3 className="text-sm font-medium text-gray-700 mb-1">Date Reported</h3>
+                <p className="text-gray-900">{new Date(selectedMaintenance.date_at).toLocaleString()}</p>
+              </div>
+            </div>
+
+            {/* Acknowledgment Section */}
+            <div className="border-b border-gray-200 pb-4">
+              <h3 className="text-sm font-semibold text-gray-900 mb-3">Acknowledgment Status</h3>
+              {selectedMaintenance.is_acknowledged ? (
+                <div className="bg-green-50 p-3 rounded-lg">
+                  <p className="text-xs font-medium text-green-700 mb-1">✓ Acknowledged</p>
+                  {selectedMaintenance.acknowledged_by && (
+                    <p className="text-sm text-green-700 mb-1">By: {selectedMaintenance.acknowledged_by}</p>
+                  )}
+                  {selectedMaintenance.acknowledged_at && (
+                    <p className="text-sm text-green-700">{new Date(selectedMaintenance.acknowledged_at).toLocaleString()}</p>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Your Name <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={acknowledgedBy}
+                      onChange={(e) => setAcknowledgedBy(e.target.value)}
+                      className="w-full px-3 py-2 bg-white text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                      placeholder="Enter your name"
+                    />
+                  </div>
+                  <button
+                    onClick={handleAcknowledgeMaintenance}
+                    disabled={updatingMaintenanceId === selectedMaintenance.maintainence_id}
+                    className="w-full btn-primary disabled:opacity-50"
+                  >
+                    {updatingMaintenanceId === selectedMaintenance.maintainence_id ? 'Acknowledging...' : 'Acknowledge'}
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Resolution Section */}
+            <div className="pb-4">
+              <h3 className="text-sm font-semibold text-gray-900 mb-3">Resolution Status</h3>
+              {selectedMaintenance.resolved_at ? (
+                <div className="bg-gray-50 p-3 rounded-lg">
+                  <p className="text-xs font-medium text-gray-700 mb-1">✓ Resolved</p>
+                  <p className="text-sm text-gray-700">{new Date(selectedMaintenance.resolved_at).toLocaleString()}</p>
+                </div>
+              ) : (
+                <button
+                  onClick={handleResolveMaintenance}
+                  disabled={updatingMaintenanceId === selectedMaintenance.maintainence_id}
+                  className="w-full btn-primary disabled:opacity-50"
+                >
+                  {updatingMaintenanceId === selectedMaintenance.maintainence_id ? 'Marking as Resolved...' : 'Mark as Resolved'}
+                </button>
+              )}
+            </div>
+
+            {/* Close Button */}
+            <div className="flex justify-end pt-4 border-t border-gray-200">
+              <button
+                onClick={() => {
+                  setShowMaintenanceDetailModal(false)
+                  setSelectedMaintenance(null)
+                  setAcknowledgedBy('')
+                }}
+                className="btn-secondary"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
 
       {/* Create Lab Modal */}
       <Modal
@@ -393,7 +575,7 @@ export default function DepartmentDetail() {
               type="number"
               value={labNumber}
               onChange={(e) => setLabNumber(e.target.value)}
-              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+              className="w-full px-4 py-2.5 bg-white text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
               placeholder="e.g., 1, 2, 3"
             />
           </div>
@@ -433,7 +615,7 @@ export default function DepartmentDetail() {
               type="text"
               value={assistantForm.name}
               onChange={(e) => setAssistantForm({ ...assistantForm, name: e.target.value })}
-              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+              className="w-full px-4 py-2.5 bg-white text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
               placeholder="Full name"
             />
           </div>
@@ -445,7 +627,7 @@ export default function DepartmentDetail() {
               type="email"
               value={assistantForm.email}
               onChange={(e) => setAssistantForm({ ...assistantForm, email: e.target.value })}
-              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+              className="w-full px-4 py-2.5 bg-white text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
               placeholder="email@example.com"
             />
           </div>

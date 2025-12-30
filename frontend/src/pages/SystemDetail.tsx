@@ -111,7 +111,8 @@ export default function SystemDetail() {
     }
 
     try {
-      await api.post(`/departments/${deptId}/labs/${labId}/${systemId}/maintenance-logs`, {
+      await api.post(`/departments/${deptId}/labs/${labId}/maintenance`, {
+        system_id: systemId,
         severity: maintenanceForm.severity,
         message: maintenanceForm.message,
         date_at: new Date().toISOString(),
@@ -402,7 +403,7 @@ export default function SystemDetail() {
             <select
               value={maintenanceForm.severity}
               onChange={(e) => setMaintenanceForm({ ...maintenanceForm, severity: e.target.value })}
-              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+              className="w-full px-4 py-2.5 bg-white text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
             >
               <option value="low">Low</option>
               <option value="medium">Medium</option>
@@ -417,7 +418,7 @@ export default function SystemDetail() {
             <textarea
               value={maintenanceForm.message}
               onChange={(e) => setMaintenanceForm({ ...maintenanceForm, message: e.target.value })}
-              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+              className="w-full px-4 py-2.5 bg-white text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
               rows={4}
               placeholder="Describe the issue or maintenance requirement..."
             />
