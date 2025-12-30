@@ -1,6 +1,17 @@
 import { ArrowRight, Zap, Shield, TrendingUp } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 
 export default function Hero() {
+  const navigate = useNavigate()
+
+  const handleGetStarted = () => {
+    navigate('/departments')
+  }
+
+  const handleViewDocs = () => {
+    window.open('https://github.com/yourusername/optilab/blob/main/README.md', '_blank')
+  }
+
   return (
     <div className="relative overflow-hidden bg-gradient-to-br from-primary-50 via-white to-primary-50">
       {/* Animated background elements */}
@@ -31,11 +42,11 @@ export default function Hero() {
           </p>
           
           <div className="flex items-center justify-center space-x-4 mb-16">
-            <button className="btn-primary flex items-center space-x-2">
+            <button onClick={handleGetStarted} className="btn-primary flex items-center space-x-2">
               <span>Get Started</span>
               <ArrowRight className="w-5 h-5" />
             </button>
-            <button className="btn-secondary">
+            <button onClick={handleViewDocs} className="btn-secondary">
               View Documentation
             </button>
           </div>

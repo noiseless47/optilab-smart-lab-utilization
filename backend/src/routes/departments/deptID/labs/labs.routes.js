@@ -28,5 +28,17 @@ router.post("/", (req, res) => {
     })
 })
 
+router.delete("/:labID", (req, res) => {
+    const labID = req.params.labID;
+    departmentModel.deleteLab(labID)
+    .then(() => {
+        res.status(200).json({ message: 'Lab deleted successfully' });
+    })
+    .catch((err)=>{
+        res.status(500).json({error:err.message});
+        console.error("Error:", err.message);
+    })
+})
+
 router.use('/:labID', require('./labID/labID.routes'))
 module.exports = router;

@@ -28,5 +28,16 @@ router.post("/", (req, res) => {
     })
 })
 
+router.delete("/:assistantID", (req, res) => {
+    const assistantID = req.params.assistantID;
+    departmentModel.deleteLabAssistant(assistantID)
+    .then(() => {
+        res.status(200).json({ message: 'Lab assistant deleted successfully' });
+    })
+    .catch((err)=>{
+        res.status(500).json({error:err.message});
+        console.error("Error:", err.message);
+    })
+})
 
 module.exports = router;

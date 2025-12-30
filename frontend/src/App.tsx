@@ -6,6 +6,10 @@ import Dashboard from './components/Dashboard'
 import Systems from './pages/Systems'
 import Analytics from './pages/Analytics'
 import Alerts from './pages/Alerts'
+import Departments from './pages/Departments'
+import DepartmentDetail from './pages/DepartmentDetail'
+import Lab from './pages/Lab'
+import SystemDetail from './pages/SystemDetail'
 
 function App() {
   return (
@@ -19,6 +23,10 @@ function App() {
               <Dashboard />
             </>
           } />
+          <Route path="/departments" element={<Departments />} />
+          <Route path="/departments/:deptId" element={<DepartmentDetail />} />
+          <Route path="/departments/:deptId/labs/:labId" element={<Lab />} />
+          <Route path="/departments/:deptId/labs/:labId/systems/:systemId" element={<SystemDetail />} />
           <Route path="/systems" element={<Systems />} />
           <Route path="/analytics" element={<Analytics />} />
           <Route path="/alerts" element={<Alerts />} />

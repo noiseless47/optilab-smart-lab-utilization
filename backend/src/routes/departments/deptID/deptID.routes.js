@@ -41,4 +41,5 @@ router.delete("/", (req, res) => {
 //
 router.use('/labs', require('./labs/labs.routes'));
 router.use('/faculty', require('./faculty/faculty.routes'));
+router.use('/lab-assistants', require('./faculty/faculty.routes'));
 module.exports = router;

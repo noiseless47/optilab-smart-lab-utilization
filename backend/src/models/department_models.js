@@ -232,6 +232,13 @@ class DepartmentModel {
         return result[0] || null
     }
 
+    async getAllSystems() {
+        return await this.query(
+            this.sql`SELECT * FROM systems ORDER BY hostname`,
+            'Failed to get all systems'
+        )
+    }
+
     async getSystemsByLab(labID) {
         this.validateID(labID)
         return await this.query(
@@ -262,21 +269,25 @@ class DepartmentModel {
 
     // MAINTAINENCE MODELS -----------------------------------------------------------------
     
-    async addMaintainence(system_id, lab_id, date_at, isACK, ACKat, ACKby, resolved_at, severity, message) {
+    async addMaintainence(system_id, date_at, isACK, ACKat, ACKby, resolved_at, severity, message) {
         this.validateID(system_id);
-        this.validateID(lab_id);
         this.validateRequired(severity, 'severity');
         this.validateRequired(message, 'message');
         this.validateRequired(date_at, 'date_at');
 
-        const query = this.sql`INSERT INTO maintainence_logs(system_id, lab_id, date_at, is_acknowledged, acknowledged_at, acknowledged_by, resolved_at, severity, message) VALUES(${system_id}, ${lab_id}, ${date_at}, ${isACK}, ${ACKat}, ${ACKby}, ${resolved_at}, ${severity}, ${message}) RETURNING *`
+        const query = this.sql`INSERT INTO maintainence_logs(system_id, date_at, is_acknowledged, acknowledged_at, acknowledged_by, resolved_at, severity, message) VALUES(${system_id}, ${date_at}, ${isACK}, ${ACKat}, ${ACKby}, ${resolved_at}, ${severity}, ${message}) RETURNING *`
 
         return await this.query(query, 'Failed to add maintainence log')
     }
     
     async getMaintainenceByLabID(lab_id) {
         this.validateID(lab_id)
-        const query = this.sql`SELECT * FROM maintainence_logs WHERE lab_id = ${lab_id}`
+        const query = this.sql`
+            SELECT ml.* FROM maintainence_logs ml
+            INNER JOIN systems s ON ml.system_id = s.system_id
+            WHERE s.lab_id = ${lab_id}
+            ORDER BY ml.date_at DESC
+        `
         const result = await this.query(
             query,
             'Failed to get maintainence logs'
