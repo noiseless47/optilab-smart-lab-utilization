@@ -58,14 +58,14 @@ export default function Lab() {
     try {
       setLoading(true)
       const [deptRes, labRes, systemsRes] = await Promise.all([
-        api.get(`/api/departments/${deptId}`),
-        api.get(`/api/departments/${deptId}/labs/${labId}`),
-        api.get(`/api/departments/${deptId}/labs/${labId}/systems`)
+        api.get(`/departments/${deptId}`),
+        api.get(`/departments/${deptId}/labs/${labId}`),
+        api.get(`/departments/${deptId}/labs/${labId}/systems`)
       ])
       
       setDepartment(deptRes.data)
       setLab(labRes.data)
-      setSystems(systemsRes.data)
+      setSystems(Array.isArray(systemsRes.data) ? systemsRes.data : [])
     } catch (error) {
       console.error('Failed to fetch lab data:', error)
       addToast('Failed to load lab data', 'error')

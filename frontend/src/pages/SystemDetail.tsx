@@ -90,8 +90,8 @@ export default function SystemDetail() {
     try {
       setLoading(true)
       const [systemRes, metricsRes] = await Promise.all([
-        api.get(`/api/departments/${deptId}/labs/${labId}/${systemId}`),
-        api.get(`/api/systems/${systemId}/metrics?hours=24&limit=100`)
+        api.get(`/departments/${deptId}/labs/${labId}/${systemId}`),
+        api.get(`/departments/${deptId}/labs/${labId}/${systemId}/metrics`, { params: { hours: 24, limit: 100 } })
       ])
       
       setSystem(systemRes.data)
@@ -111,8 +111,7 @@ export default function SystemDetail() {
     }
 
     try {
-      await api.post(`/api/departments/${deptId}/labs/${labId}/maintenance`, {
-        system_id: systemId,
+      await api.post(`/departments/${deptId}/labs/${labId}/${systemId}/maintenance-logs`, {
         severity: maintenanceForm.severity,
         message: maintenanceForm.message,
         date_at: new Date().toISOString(),

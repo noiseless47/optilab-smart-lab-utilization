@@ -79,7 +79,7 @@ class MetricsModel {
             this.sql`
                 SELECT * FROM metrics
                 WHERE system_id = ${systemID}
-                AND timestamp >= NOW() - INTERVAL '${hours} hours'
+                AND timestamp >= NOW() - (${hours}::integer || ' hours')::interval
                 ORDER BY timestamp DESC
                 LIMIT ${limit}
             `,
@@ -117,7 +117,7 @@ class MetricsModel {
                     metric_count
                 FROM hourly_performance_stats
                 WHERE system_id = ${systemID}
-                AND hour_bucket >= NOW() - INTERVAL '${hours} hours'
+                AND hour_bucket >= NOW() - (${hours}::integer || ' hours')::interval
                 ORDER BY hour_bucket DESC
             `,
             'Failed to get hourly stats'
@@ -139,7 +139,7 @@ class MetricsModel {
                     metric_count
                 FROM hourly_performance_stats
                 WHERE system_id = ANY(${systemIDs})
-                AND hour_bucket >= NOW() - INTERVAL '${hours} hours'
+                AND hour_bucket >= NOW() - (${hours}::integer || ' hours')::interval
                 ORDER BY system_id, hour_bucket DESC
             `,
             'Failed to get hourly stats for multiple systems'
@@ -162,7 +162,7 @@ class MetricsModel {
                     metric_count
                 FROM daily_performance_stats
                 WHERE system_id = ${systemID}
-                AND day_bucket >= NOW() - INTERVAL '${days} days'
+                AND day_bucket >= NOW() - (${days}::integer || ' days')::interval
                 ORDER BY day_bucket DESC
             `,
             'Failed to get daily stats'
@@ -184,7 +184,7 @@ class MetricsModel {
                     metric_count
                 FROM daily_performance_stats
                 WHERE system_id = ANY(${systemIDs})
-                AND day_bucket >= NOW() - INTERVAL '${days} days'
+                AND day_bucket >= NOW() - (${days}::integer || ' days')::interval
                 ORDER BY system_id, day_bucket DESC
             `,
             'Failed to get daily stats for multiple systems'
@@ -264,7 +264,7 @@ class MetricsModel {
                 SELECT COUNT(*) as count
                 FROM metrics
                 WHERE system_id = ${systemID}
-                AND timestamp >= NOW() - INTERVAL '${hours} hours'
+                AND timestamp >= NOW() - (${hours}::integer || ' hours')::interval
             `,
             'Failed to get metrics count'
         )
@@ -275,7 +275,7 @@ class MetricsModel {
         // Note: This is handled by TimescaleDB retention policy,
         // but this method allows manual cleanup if needed
         return await this.query(
-            this.sql`DELETE FROM metrics WHERE timestamp < NOW() - INTERVAL '${days} days'`,
+            this.sql`DELETE FROM metrics WHERE timestamp < NOW() - (${days}::integer || ' days')::interval`,
             'Failed to cleanup old metrics'
         )
     }

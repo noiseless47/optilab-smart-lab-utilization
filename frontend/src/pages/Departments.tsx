@@ -52,7 +52,7 @@ export default function Departments() {
     try {
       setLoading(true)
       setError(null)
-      const response = await api.get('/api/departments')
+      const response = await api.get('/departments')
       setDepartments(response.data)
     } catch (err: any) {
       console.error('Failed to fetch departments:', err)
@@ -70,7 +70,7 @@ export default function Departments() {
     }
 
     try {
-      await api.post('/api/departments', {
+      await api.post('/departments', {
         name: formData.dept_name,
         code: formData.dept_code,
         vlan: formData.vlan_id || null,
@@ -92,7 +92,7 @@ export default function Departments() {
     if (!selectedDept) return
 
     try {
-      await api.delete(`/api/departments/${selectedDept.dept_id}`)
+      await api.delete(`/departments/${selectedDept.dept_id}`)
       addToast('Department deleted successfully', 'success')
       setShowDeleteDialog(false)
       setSelectedDept(null)

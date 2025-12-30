@@ -81,9 +81,9 @@ export default function DepartmentDetail() {
     try {
       setLoading(true)
       const [deptRes, labsRes, assistantsRes] = await Promise.all([
-        api.get(`/api/departments/${deptId}`),
-        api.get(`/api/departments/${deptId}/labs`),
-        api.get(`/api/departments/${deptId}/lab-assistants`),
+        api.get(`/departments/${deptId}`),
+        api.get(`/departments/${deptId}/labs`),
+        api.get(`/departments/${deptId}/faculty`),
       ])
       
       setDepartment(deptRes.data)
@@ -92,7 +92,7 @@ export default function DepartmentDetail() {
       
       // Fetch maintenance logs for all labs in this department
       const logsPromises = labsRes.data.map((lab: Lab) =>
-        api.get(`/api/departments/${deptId}/labs/${lab.lab_id}/maintenance`)
+        api.get(`/departments/${deptId}/labs/${lab.lab_id}/maintenance`)
           .then(res => res.data)
           .catch(() => [])
       )
@@ -146,7 +146,7 @@ export default function DepartmentDetail() {
     }
 
     try {
-      await api.post(`/api/departments/${deptId}/lab-assistants`, {
+      await api.post(`/departments/${deptId}/faculty`, {
         name: assistantForm.name,
         email: assistantForm.email,
       })
@@ -164,7 +164,7 @@ export default function DepartmentDetail() {
     if (!selectedAssistant) return
 
     try {
-      await api.delete(`/api/departments/${deptId}/lab-assistants/${selectedAssistant.lab_assistant_id}`)
+      await api.delete(`/departments/${deptId}/faculty/${selectedAssistant.lab_assistant_id}`)
       addToast('Lab assistant deleted successfully', 'success')
       setShowDeleteAssistantDialog(false)
       setSelectedAssistant(null)
