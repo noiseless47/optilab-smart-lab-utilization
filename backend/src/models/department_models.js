@@ -20,10 +20,12 @@ class DepartmentModel {
     // Safe query wrapper
     async query(sqlQuery, errorMsg = 'Database operation failed') {
         try {
-            return await sqlQuery
+            const result = await sqlQuery
+            return Array.isArray(result) ? result : [result]
         } catch (error) {
             console.error(errorMsg, error.message)
-            throw new Error(errorMsg)
+            console.error('Full error:', error)
+            throw new Error(`${errorMsg}: ${error.message}`)
         }
     }
 
@@ -301,6 +303,59 @@ class DepartmentModel {
         return await this.query(
             this.sql`UPDATE maintainence_logs SET ${setClause} WHERE maintainence_id = ${maintainence_id} RETURNING *`,
             'Failed to update maintainence log'
+        )
+    }
+
+    async getMaintainenceBySystemID(system_id) {
+        this.validateID(system_id)
+        const query = this.sql`SELECT * FROM maintainence_logs WHERE system_id = ${system_id} ORDER BY date_at DESC`
+        return await this.query(
+            query,
+            'Failed to get maintainence logs for system'
+        )
+    }
+
+    async getMaintainenceUnresolved() {
+        const query = this.sql`SELECT * FROM maintainence_logs WHERE resolved_at IS NULL ORDER BY date_at DESC`
+        return await this.query(
+            query,
+            'Failed to get unresolved maintainence logs'
+        )
+    }
+
+    async getMaintainenceBySeverity(severity) {
+        this.validateRequired(severity, 'severity')
+        const query = this.sql`SELECT * FROM maintainence_logs WHERE severity = ${severity} ORDER BY date_at DESC`
+        return await this.query(
+            query,
+            'Failed to get maintainence logs by severity'
+        )
+    }
+
+    async acknowledgeMaintainence(maintainence_id, acknowledged_by) {
+        this.validateID(maintainence_id)
+        this.validateRequired(acknowledged_by, 'acknowledged_by')
+        const query = this.sql`UPDATE maintainence_logs SET is_acknowledged = true, acknowledged_at = NOW(), acknowledged_by = ${acknowledged_by} WHERE maintainence_id = ${maintainence_id} RETURNING *`
+        return await this.query(
+            query,
+            'Failed to acknowledge maintainence log'
+        )
+    }
+
+    async resolveMaintainence(maintainence_id) {
+        this.validateID(maintainence_id)
+        const query = this.sql`UPDATE maintainence_logs SET resolved_at = NOW() WHERE maintainence_id = ${maintainence_id} RETURNING *`
+        return await this.query(
+            query,
+            'Failed to resolve maintainence log'
+        )
+    }
+
+    async deleteMaintainence(maintainence_id) {
+        this.validateID(maintainence_id)
+        return await this.query(
+            this.sql`DELETE FROM maintainence_logs WHERE maintainence_id = ${maintainence_id}`,
+            'Failed to delete maintainence log'
         )
     }
 }

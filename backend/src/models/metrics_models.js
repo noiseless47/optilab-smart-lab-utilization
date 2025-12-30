@@ -27,10 +27,12 @@ class MetricsModel {
     // Safe query wrapper
     async query(sqlQuery, errorMsg = 'Database operation failed') {
         try {
-            return await sqlQuery
+            const result = await sqlQuery
+            return Array.isArray(result) ? result : [result]
         } catch (error) {
             console.error(errorMsg, error.message)
-            throw new Error(errorMsg)
+            console.error('Full error:', error)
+            throw new Error(`${errorMsg}: ${error.message}`)
         }
     }
 
