@@ -1,10 +1,10 @@
 import { Link, useLocation } from 'react-router-dom'
-import { Server, Activity, AlertCircle, BarChart3 } from 'lucide-react'
+import { Server, Activity, AlertCircle, BarChart3, Building2 } from 'lucide-react'
 
 export default function Navbar() {
   const location = useLocation()
   
-  const isActive = (path: string) => location.pathname === path
+  const isActive = (path: string) => location.pathname === path || location.pathname.startsWith(path + '/')
   
   return (
     <nav className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-gray-200">
@@ -23,6 +23,9 @@ export default function Navbar() {
           <div className="flex items-center space-x-1">
             <NavLink to="/" active={isActive('/')} icon={<Activity className="w-4 h-4" />}>
               Dashboard
+            </NavLink>
+            <NavLink to="/departments" active={isActive('/departments')} icon={<Building2 className="w-4 h-4" />}>
+              Departments
             </NavLink>
             <NavLink to="/systems" active={isActive('/systems')} icon={<Server className="w-4 h-4" />}>
               Systems

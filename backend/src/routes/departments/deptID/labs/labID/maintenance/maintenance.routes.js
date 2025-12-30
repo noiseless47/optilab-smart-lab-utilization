@@ -18,7 +18,7 @@ router.post("/", (req, res) => {
     const labID = req.params.labID;
     const {system_id, date_at, isACK, ACKat, ACKby, resolved_at, severity, message} = req.body;
 
-    departmentModel.addMaintainence(system_id, labID, date_at, isACK, ACKat, ACKby, resolved_at, severity, message)
+    departmentModel.addMaintainence(system_id, date_at, isACK, ACKat, ACKby, resolved_at, severity, message)
     .then((maint) => {
         res.status(200).json(maint);
     })

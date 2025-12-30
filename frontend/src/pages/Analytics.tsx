@@ -1,6 +1,113 @@
-import { TrendingUp, TrendingDown, BarChart3, PieChart, Activity } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { TrendingUp, TrendingDown, BarChart3, PieChart, Activity, CheckCircle } from 'lucide-react'
+import Loading from '../components/Loading'
+import api from '../lib/api'
+
+interface SystemWithMetrics {
+  system_id: number
+  hostname: string
+  lab_id: number
+  cpu: number
+  memory: number
+  disk: number
+}
 
 export default function Analytics() {
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [systems, setSystems] = useState<SystemWithMetrics[]>([])
+  const [avgCpu, setAvgCpu] = useState(0)
+  const [avgMemory, setAvgMemory] = useState(0)
+
+  useEffect(() => {
+    fetchAnalytics()
+  }, [])
+
+  const fetchAnalytics = async () => {
+    try {
+      setLoading(true)
+      setError(null)
+      const systemsRes = await api.get('/api/systems/all')
+      const systemsData = systemsRes.data
+
+      const systemsWithMetrics = await Promise.all(
+        systemsData.map(async (system: any) => {
+          try {
+            const metricsRes = await api.get(`/api/systems/${system.system_id}/metrics/latest`)
+            const metrics = metricsRes.data
+            return {
+              system_id: system.system_id,
+              hostname: system.hostname,
+              lab_id: system.lab_id,
+              cpu: metrics?.cpu_percent || 0,
+              memory: metrics?.ram_percent || 0,
+              disk: metrics?.disk_percent || 0
+            }
+          } catch {
+            return {
+              system_id: system.system_id,
+              hostname: system.hostname,
+              lab_id: system.lab_id,
+              cpu: 0,
+              memory: 0,
+              disk: 0
+            }
+          }
+        })
+      )
+
+      setSystems(systemsWithMetrics)
+      
+      // Calculate averages
+      const totalCpu = systemsWithMetrics.reduce((acc, s) => acc + s.cpu, 0)
+      const totalMemory = systemsWithMetrics.reduce((acc, s) => acc + s.memory, 0)
+      setAvgCpu(systemsWithMetrics.length > 0 ? Math.round(totalCpu / systemsWithMetrics.length) : 0)
+      setAvgMemory(systemsWithMetrics.length > 0 ? Math.round(totalMemory / systemsWithMetrics.length) : 0)
+    } catch (err: any) {
+      console.error('Failed to fetch analytics:', err)
+      setError(err.response?.data?.error || 'Failed to load analytics')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="max-w-7xl mx-auto px-6 py-12">
+        <div className="mb-8">
+          <h1 className="text-4xl font-bold text-gray-900 mb-2">Analytics</h1>
+          <p className="text-gray-600">Advanced insights and resource optimization</p>
+        </div>
+        <Loading text="Loading analytics..." />
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="max-w-7xl mx-auto px-6 py-12">
+        <div className="mb-8">
+          <h1 className="text-4xl font-bold text-gray-900 mb-2">Analytics</h1>
+          <p className="text-gray-600">Advanced insights and resource optimization</p>
+        </div>
+        <div className="card p-8 text-center">
+          <p className="text-red-600 mb-4">{error}</p>
+          <button onClick={fetchAnalytics} className="btn btn-primary">Try Again</button>
+        </div>
+      </div>
+    )
+  }
+
+  // Get top consumers by CPU
+  const topCpuConsumers = [...systems]
+    .sort((a, b) => b.cpu - a.cpu)
+    .slice(0, 5)
+
+  // Count high usage systems
+  const highCpuCount = systems.filter(s => s.cpu > 80).length
+  const highMemoryCount = systems.filter(s => s.memory > 80).length
+  const highDiskCount = systems.filter(s => s.disk > 80).length
+
   return (
     <div className="max-w-7xl mx-auto px-6 py-12">
       <div className="mb-8">
@@ -12,30 +119,30 @@ export default function Analytics() {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-12">
         <MetricCard
           title="Avg CPU Usage"
-          value="67%"
-          change="+5%"
-          trend="up"
+          value={`${avgCpu}%`}
+          change={avgCpu > 70 ? '+High' : 'Normal'}
+          trend={avgCpu > 70 ? 'up' : 'down'}
           icon={<Activity className="w-5 h-5" />}
         />
         <MetricCard
           title="Avg Memory"
-          value="72%"
-          change="-2%"
-          trend="down"
+          value={`${avgMemory}%`}
+          change={avgMemory > 70 ? '+High' : 'Normal'}
+          trend={avgMemory > 70 ? 'up' : 'down'}
           icon={<Activity className="w-5 h-5" />}
         />
         <MetricCard
-          title="Efficiency Score"
-          value="85/100"
-          change="+3"
-          trend="up"
+          title="Total Systems"
+          value={`${systems.length}`}
+          change="Active"
+          trend="down"
           icon={<TrendingUp className="w-5 h-5" />}
         />
         <MetricCard
-          title="Bottlenecks"
-          value="12"
-          change="-4"
-          trend="down"
+          title="High CPU Systems"
+          value={`${highCpuCount}`}
+          change={highCpuCount > 5 ? 'Warning' : 'Normal'}
+          trend={highCpuCount > 5 ? 'up' : 'down'}
           icon={<TrendingDown className="w-5 h-5" />}
         />
       </div>
@@ -57,36 +164,57 @@ export default function Analytics() {
       {/* Top Consumers */}
       <div className="card p-6 mb-12">
         <h2 className="text-xl font-semibold text-gray-900 mb-6">Top CPU Consumers</h2>
-        <div className="space-y-4">
-          <ConsumerBar system="Lab-3-PC-15" lab="ISE Lab 3" value={95} color="red" />
-          <ConsumerBar system="Lab-1-PC-08" lab="CSE Lab 1" value={87} color="yellow" />
-          <ConsumerBar system="Lab-2-PC-22" lab="ECE Lab 2" value={78} color="green" />
-          <ConsumerBar system="Lab-1-PC-14" lab="ISE Lab 1" value={72} color="green" />
-        </div>
+        {topCpuConsumers.length === 0 ? (
+          <p className="text-gray-500 text-center py-8">No system data available</p>
+        ) : (
+          <div className="space-y-4">
+            {topCpuConsumers.map(system => (
+              <ConsumerBar
+                key={system.system_id}
+                system={system.hostname}
+                lab={`Lab ${system.lab_id}`}
+                value={Math.round(system.cpu)}
+                color={system.cpu > 90 ? 'red' : system.cpu > 70 ? 'yellow' : 'green'}
+              />
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Recommendations */}
       <div className="card p-6">
         <h2 className="text-xl font-semibold text-gray-900 mb-6">Optimization Recommendations</h2>
         <div className="space-y-4">
-          <Recommendation
-            type="hardware"
-            title="RAM Upgrade Recommended"
-            description="Lab-1-PC-08 consistently exceeds 90% memory usage. Consider upgrading from 8GB to 16GB."
-            priority="high"
-          />
-          <Recommendation
-            type="optimization"
-            title="Underutilized System Detected"
-            description="Lab-5-PC-03 averages 15% CPU usage. Consider reallocation or workload balancing."
-            priority="medium"
-          />
-          <Recommendation
-            type="maintenance"
-            title="Disk Cleanup Required"
-            description="Lab-2-PC-18 disk usage at 92%. Schedule cleanup to prevent performance degradation."
-            priority="high"
-          />
+          {highMemoryCount > 0 && (
+            <Recommendation
+              type="hardware"
+              title="High Memory Usage Detected"
+              description={`${highMemoryCount} system(s) consistently exceed 80% memory usage. Consider upgrading RAM.`}
+              priority="high"
+            />
+          )}
+          {highDiskCount > 0 && (
+            <Recommendation
+              type="maintenance"
+              title="Disk Cleanup Required"
+              description={`${highDiskCount} system(s) have disk usage above 80%. Schedule cleanup to prevent performance degradation.`}
+              priority="high"
+            />
+          )}
+          {highCpuCount > 0 && (
+            <Recommendation
+              type="optimization"
+              title="High CPU Load"
+              description={`${highCpuCount} system(s) are experiencing elevated CPU usage. Consider workload balancing.`}
+              priority="medium"
+            />
+          )}
+          {highCpuCount === 0 && highMemoryCount === 0 && highDiskCount === 0 && (
+            <div className="text-center py-8 text-gray-500">
+              <CheckCircle className="w-12 h-12 mx-auto mb-2 text-green-500" />
+              <p>All systems operating within normal parameters</p>
+            </div>
+          )}
         </div>
       </div>
     </div>

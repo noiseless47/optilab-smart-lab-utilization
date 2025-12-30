@@ -1,6 +1,161 @@
+import { useState, useEffect } from 'react'
 import { AlertTriangle, AlertCircle, Info, CheckCircle, Clock, X } from 'lucide-react'
+import Loading from '../components/Loading'
+import api from '../lib/api'
+
+interface Alert {
+  id: string
+  severity: 'critical' | 'warning' | 'info'
+  title: string
+  message: string
+  system: string
+  lab: string
+  time: string
+  duration: string
+  cpu?: number
+  memory?: number
+  disk?: number
+}
 
 export default function Alerts() {
+  const [dismissedAlerts, setDismissedAlerts] = useState<string[]>([])
+  const [alerts, setAlerts] = useState<Alert[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    fetchAlerts()
+  }, [])
+
+  const fetchAlerts = async () => {
+    try {
+      setLoading(true)
+      setError(null)
+      const systemsRes = await api.get('/api/systems/all')
+      const systemsData = systemsRes.data
+
+      const generatedAlerts: Alert[] = []
+      let alertId = 1
+
+      for (const system of systemsData) {
+        try {
+          const metricsRes = await api.get(`/api/systems/${system.system_id}/metrics/latest`)
+          const metrics = metricsRes.data
+
+          if (metrics) {
+            // Critical CPU alert
+            if (metrics.cpu_percent > 90) {
+              generatedAlerts.push({
+                id: `alert-${alertId++}`,
+                severity: 'critical',
+                title: 'High CPU Usage Detected',
+                message: `${system.hostname} CPU usage at ${Math.round(metrics.cpu_percent)}%, exceeding critical threshold`,
+                system: system.hostname,
+                lab: `Lab ${system.lab_id}`,
+                time: 'Real-time',
+                duration: 'Active',
+                cpu: metrics.cpu_percent
+              })
+            }
+
+            // Critical Memory alert
+            if (metrics.ram_percent > 90) {
+              generatedAlerts.push({
+                id: `alert-${alertId++}`,
+                severity: 'critical',
+                title: 'Memory Threshold Exceeded',
+                message: `${system.hostname} memory usage at ${Math.round(metrics.ram_percent)}%, approaching critical levels`,
+                system: system.hostname,
+                lab: `Lab ${system.lab_id}`,
+                time: 'Real-time',
+                duration: 'Active',
+                memory: metrics.ram_percent
+              })
+            }
+
+            // Warning Disk alert
+            if (metrics.disk_percent > 85) {
+              generatedAlerts.push({
+                id: `alert-${alertId++}`,
+                severity: 'warning',
+                title: 'Disk Space Running Low',
+                message: `${system.hostname} disk usage at ${Math.round(metrics.disk_percent)}%, cleanup recommended`,
+                system: system.hostname,
+                lab: `Lab ${system.lab_id}`,
+                time: 'Real-time',
+                duration: 'Active',
+                disk: metrics.disk_percent
+              })
+            }
+
+            // Warning CPU alert
+            if (metrics.cpu_percent > 75 && metrics.cpu_percent <= 90) {
+              generatedAlerts.push({
+                id: `alert-${alertId++}`,
+                severity: 'warning',
+                title: 'Elevated CPU Usage',
+                message: `${system.hostname} CPU at ${Math.round(metrics.cpu_percent)}%, monitor for potential issues`,
+                system: system.hostname,
+                lab: `Lab ${system.lab_id}`,
+                time: 'Real-time',
+                duration: 'Active',
+                cpu: metrics.cpu_percent
+              })
+            }
+          }
+        } catch (err) {
+          console.error(`Failed to fetch metrics for system ${system.system_id}:`, err)
+        }
+      }
+
+      setAlerts(generatedAlerts)
+    } catch (err: any) {
+      console.error('Failed to fetch alerts:', err)
+      setError(err.response?.data?.error || 'Failed to load alerts')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleDismissAlert = (alertId: string) => {
+    setDismissedAlerts([...dismissedAlerts, alertId])
+  }
+
+  const isAlertDismissed = (alertId: string) => dismissedAlerts.includes(alertId)
+
+  if (loading) {
+    return (
+      <div className="max-w-7xl mx-auto px-6 py-12">
+        <div className="mb-8">
+          <h1 className="text-4xl font-bold text-gray-900 mb-2">Alerts</h1>
+          <p className="text-gray-600">Real-time system alerts and notifications</p>
+        </div>
+        <Loading text="Loading alerts..." />
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="max-w-7xl mx-auto px-6 py-12">
+        <div className="mb-8">
+          <h1 className="text-4xl font-bold text-gray-900 mb-2">Alerts</h1>
+          <p className="text-gray-600">Real-time system alerts and notifications</p>
+        </div>
+        <div className="card p-8 text-center">
+          <p className="text-red-600 mb-4">{error}</p>
+          <button onClick={fetchAlerts} className="btn btn-primary">Try Again</button>
+        </div>
+      </div>
+    )
+  }
+
+  const activeAlerts = alerts.filter(a => !isAlertDismissed(a.id))
+  const criticalCount = activeAlerts.filter(a => a.severity === 'critical').length
+  const warningCount = activeAlerts.filter(a => a.severity === 'warning').length
+  const infoCount = activeAlerts.filter(a => a.severity === 'info').length
+  const resolvedCount = dismissedAlerts.length
+
   return (
     <div className="max-w-7xl mx-auto px-6 py-12">
       <div className="mb-8">
@@ -12,25 +167,25 @@ export default function Alerts() {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-12">
         <AlertSummaryCard
           title="Critical"
-          count={3}
+          count={criticalCount}
           icon={<AlertTriangle className="w-6 h-6" />}
           color="red"
         />
         <AlertSummaryCard
           title="Warning"
-          count={8}
+          count={warningCount}
           icon={<AlertCircle className="w-6 h-6" />}
           color="yellow"
         />
         <AlertSummaryCard
           title="Info"
-          count={15}
+          count={infoCount}
           icon={<Info className="w-6 h-6" />}
           color="blue"
         />
         <AlertSummaryCard
           title="Resolved"
-          count={42}
+          count={resolvedCount}
           icon={<CheckCircle className="w-6 h-6" />}
           color="green"
         />
@@ -39,44 +194,30 @@ export default function Alerts() {
       {/* Active Alerts */}
       <div className="card p-6 mb-8">
         <h2 className="text-xl font-semibold text-gray-900 mb-6">Active Alerts</h2>
-        <div className="space-y-4">
-          <AlertItem
-            severity="critical"
-            title="High CPU Usage Detected"
-            message="Lab-3-PC-15 CPU usage has exceeded 95% for the last 15 minutes"
-            system="Lab-3-PC-15"
-            lab="ISE Lab 3"
-            time="2 minutes ago"
-            duration="15m"
-          />
-          <AlertItem
-            severity="critical"
-            title="Memory Threshold Exceeded"
-            message="Lab-1-PC-08 memory usage at 92%, approaching critical levels"
-            system="Lab-1-PC-08"
-            lab="CSE Lab 1"
-            time="15 minutes ago"
-            duration="28m"
-          />
-          <AlertItem
-            severity="warning"
-            title="Disk Space Running Low"
-            message="Lab-2-PC-18 disk usage at 85%, cleanup recommended"
-            system="Lab-2-PC-18"
-            lab="ECE Lab 2"
-            time="45 minutes ago"
-            duration="2h 15m"
-          />
-          <AlertItem
-            severity="warning"
-            title="Network Latency High"
-            message="Lab-4-PC-12 experiencing elevated network latency (>100ms)"
-            system="Lab-4-PC-12"
-            lab="ISE Lab 4"
-            time="1 hour ago"
-            duration="1h 32m"
-          />
-        </div>
+        {activeAlerts.length === 0 ? (
+          <div className="text-center py-12">
+            <CheckCircle className="w-16 h-16 mx-auto mb-4 text-green-500" />
+            <p className="text-xl font-semibold text-gray-900 mb-2">No Active Alerts</p>
+            <p className="text-gray-600">All systems are operating normally</p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {activeAlerts.map(alert => (
+              <AlertItem
+                key={alert.id}
+                id={alert.id}
+                severity={alert.severity}
+                title={alert.title}
+                message={alert.message}
+                system={alert.system}
+                lab={alert.lab}
+                time={alert.time}
+                duration={alert.duration}
+                onDismiss={handleDismissAlert}
+              />
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Recent Activity */}
@@ -85,23 +226,13 @@ export default function Alerts() {
         <div className="space-y-3">
           <ActivityItem
             type="resolved"
-            message="CPU alert resolved for Lab-1-PC-14"
-            time="2 hours ago"
+            message={`${resolvedCount} alerts resolved today`}
+            time="Today"
           />
           <ActivityItem
             type="new"
-            message="New warning alert for Lab-3-PC-11"
-            time="3 hours ago"
-          />
-          <ActivityItem
-            type="resolved"
-            message="Disk space alert resolved for Lab-2-PC-05"
-            time="5 hours ago"
-          />
-          <ActivityItem
-            type="new"
-            message="System Lab-5-PC-20 came online"
-            time="6 hours ago"
+            message={`${activeAlerts.length} active alerts being monitored`}
+            time="Real-time"
           />
         </div>
       </div>
@@ -122,8 +253,15 @@ function AlertSummaryCard({ title, count, icon, color }: {
     green: 'from-green-500 to-green-600',
   }[color]
 
+  const handleClick = () => {
+    console.log(`Filtering ${title.toLowerCase()} alerts`)
+  }
+
   return (
-    <div className="card p-6">
+    <div 
+      onClick={handleClick}
+      className="card p-6 cursor-pointer hover:shadow-lg transition-all duration-200"
+    >
       <div className={`w-12 h-12 bg-gradient-to-br ${colorClasses} rounded-lg flex items-center justify-center text-white mb-4`}>
         {icon}
       </div>
@@ -133,7 +271,8 @@ function AlertSummaryCard({ title, count, icon, color }: {
   )
 }
 
-function AlertItem({ severity, title, message, system, lab, time, duration }: {
+function AlertItem({ id, severity, title, message, system, lab, time, duration, onDismiss }: {
+  id: string
   severity: string
   title: string
   message: string
@@ -141,6 +280,7 @@ function AlertItem({ severity, title, message, system, lab, time, duration }: {
   lab: string
   time: string
   duration: string
+  onDismiss: (id: string) => void
 }) {
   const severityConfig = {
     critical: {
@@ -183,7 +323,11 @@ function AlertItem({ severity, title, message, system, lab, time, duration }: {
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between mb-2">
             <h3 className="font-semibold text-gray-900">{title}</h3>
-            <button className="text-gray-400 hover:text-gray-600 transition-colors">
+            <button 
+              onClick={() => onDismiss(id)} 
+              className="text-gray-400 hover:text-gray-600 transition-colors"
+              aria-label="Dismiss alert"
+            >
               <X className="w-5 h-5" />
             </button>
           </div>
