@@ -152,7 +152,7 @@ export default function Systems() {
         <p className="text-gray-600">Monitor and manage all lab systems</p>
       </div>
 
-      {/* Search and Filter */
+      {/* Search and Filter */}
       <div className="flex items-center space-x-4 mb-8">
         <div className="flex-1 relative">
           <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
