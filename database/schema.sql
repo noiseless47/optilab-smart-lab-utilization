@@ -543,6 +543,75 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+CREATE OR REPLACE FUNCTION detect_sustained_cpu_overload()
+RETURNS TRIGGER AS $$
+DECLARE
+    high_cpu_minutes INT;
+BEGIN
+    SELECT COUNT(*) INTO high_cpu_minutes
+    FROM metrics
+    WHERE system_id = NEW.system_id
+      AND cpu_percent > 85
+      AND timestamp >= NOW() - INTERVAL '5 minutes';
+
+    IF high_cpu_minutes >= 5 THEN
+        INSERT INTO maintainence_logs (
+            system_id,
+            severity,
+            message
+        )
+        VALUES (
+            NEW.system_id,
+            'critical',
+            'Sustained CPU usage above 85% for over 5 minutes'
+        );
+    END IF;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_cpu_overload
+AFTER INSERT ON metrics
+FOR EACH ROW
+EXECUTE FUNCTION detect_sustained_cpu_overload();
+
+
+CREATE OR REPLACE FUNCTION detect_disk_io_anomaly()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF NEW.disk_write_mbps > 500 THEN
+        INSERT INTO maintainence_logs (
+            system_id,
+            severity,
+            message
+        )
+        VALUES (
+            NEW.system_id,
+            'warning',
+            'Abnormally high disk write throughput detected'
+        );
+    END IF;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+
+INSERT INTO maintainence_logs (system_id, severity, message)
+SELECT
+    s.system_id,
+    'critical',
+    'System has stopped reporting metrics for over 10 minutes'
+FROM systems s
+LEFT JOIN metrics m
+  ON s.system_id = m.system_id
+  AND m.timestamp >= NOW() - INTERVAL '10 minutes'
+WHERE s.status = 'active'
+  AND m.metric_id IS NULL;
+
+
+
 -- ============================================================================
 -- GRANT PERMISSIONS
 -- ============================================================================
@@ -555,6 +624,9 @@ $$ LANGUAGE plpgsql;
 -- ============================================================================
 -- COMPLETED
 -- ============================================================================
+
+
+
 
 COMMENT ON SCHEMA public IS 'Agentless Lab Resource Monitoring Database - Network Discovery Based';
 
