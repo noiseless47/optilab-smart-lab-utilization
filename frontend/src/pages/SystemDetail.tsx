@@ -89,12 +89,19 @@ export default function SystemDetail() {
   const fetchSystemData = async () => {
     try {
       setLoading(true)
-      const [systemRes, metricsRes] = await Promise.all([
-        api.get(`/departments/${deptId}/labs/${labId}/${systemId}`),
+      // First get all systems in the lab, then find the specific one
+      const [labSystemsRes, metricsRes] = await Promise.all([
+        api.get(`/departments/${deptId}/labs/${labId}/systems`),
         api.get(`/departments/${deptId}/labs/${labId}/${systemId}/metrics`, { params: { hours: 24, limit: 100 } })
       ])
       
-      setSystem(systemRes.data)
+      // Find the specific system from the lab's systems
+      const system = labSystemsRes.data.find((s: any) => s.system_id === parseInt(systemId || '0'))
+      if (!system) {
+        throw new Error('System not found')
+      }
+      
+      setSystem(system)
       setMetrics(metricsRes.data.reverse())
     } catch (error) {
       console.error('Failed to fetch system data:', error)
