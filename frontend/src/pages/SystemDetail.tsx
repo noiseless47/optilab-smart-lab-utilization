@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Server, Cpu, HardDrive, Activity, Network, Wrench, Plus } from 'lucide-react'
+import { ArrowLeft, Server, Cpu, HardDrive, Activity, Network, Plus } from 'lucide-react'
 import { Line } from 'react-chartjs-2'
 import {
   Chart as ChartJS,
@@ -306,6 +306,34 @@ export default function SystemDetail() {
           </div>
           <p className="text-2xl font-bold text-gray-900">{system.disk_total_gb || 'N/A'} GB</p>
         </div>
+
+        <div className="card p-6">
+          <div className="flex items-center space-x-3 mb-3">
+            <div className="w-10 h-10 bg-indigo-100 rounded-lg flex items-center justify-center">
+              <Server className="w-5 h-5 text-indigo-600" />
+            </div>
+            <span className="text-sm font-medium text-gray-600">Uptime</span>
+          </div>
+          <p className="text-2xl font-bold text-gray-900">
+            {metrics.length > 0 && metrics[metrics.length - 1]?.uptime_seconds !== null && metrics[metrics.length - 1]?.uptime_seconds !== undefined
+              ? `${Math.floor((metrics[metrics.length - 1]?.uptime_seconds ?? 0) / 3600)}h ${Math.floor(((metrics[metrics.length - 1]?.uptime_seconds ?? 0) % 3600) / 60)}m`
+              : 'N/A'}
+          </p>
+        </div>
+
+        <div className="card p-6">
+          <div className="flex items-center space-x-3 mb-3">
+            <div className="w-10 h-10 bg-cyan-100 rounded-lg flex items-center justify-center">
+              <Activity className="w-5 h-5 text-cyan-600" />
+            </div>
+            <span className="text-sm font-medium text-gray-600">Logged In Users</span>
+          </div>
+          <p className="text-2xl font-bold text-gray-900">
+            {metrics.length > 0 && metrics[metrics.length - 1].logged_in_users !== null && metrics[metrics.length - 1].logged_in_users !== undefined
+              ? metrics[metrics.length - 1].logged_in_users
+              : 'N/A'}
+          </p>
+        </div>
       </div>
 
       {/* Additional System Info */}
@@ -387,25 +415,39 @@ export default function SystemDetail() {
               </div>
             </div>
 
-            {/* Disk Read Speed */}
+            {/* Disk I/O */}
             <div className="card p-6">
               <div className="flex items-center space-x-2 mb-4">
                 <HardDrive className="w-5 h-5 text-teal-600" />
-                <h3 className="text-lg font-semibold text-gray-900">Disk Read Speed</h3>
+                <h3 className="text-lg font-semibold text-gray-900">Disk I/O</h3>
               </div>
               <div className="h-64">
-                <Line data={prepareChartData('disk_read_mbps', 'Read MB/s', '#0d9488')} options={networkChartOptions} />
-              </div>
-            </div>
-
-            {/* Disk Write Speed */}
-            <div className="card p-6">
-              <div className="flex items-center space-x-2 mb-4">
-                <HardDrive className="w-5 h-5 text-amber-600" />
-                <h3 className="text-lg font-semibold text-gray-900">Disk Write Speed</h3>
-              </div>
-              <div className="h-64">
-                <Line data={prepareChartData('disk_write_mbps', 'Write MB/s', '#d97706')} options={networkChartOptions} />
+                <Line 
+                  data={{
+                    labels: metrics.map(m => new Date(m.timestamp).toLocaleTimeString()),
+                    datasets: [
+                      {
+                        label: 'Read',
+                        data: metrics.map(m => m.disk_read_mbps || 0),
+                        borderColor: '#0d9488',
+                        backgroundColor: '#0d948820',
+                        fill: true,
+                        tension: 0.4,
+                        pointRadius: 2,
+                      },
+                      {
+                        label: 'Write',
+                        data: metrics.map(m => m.disk_write_mbps || 0),
+                        borderColor: '#d97706',
+                        backgroundColor: '#d9770620',
+                        fill: true,
+                        tension: 0.4,
+                        pointRadius: 2,
+                      }
+                    ]
+                  }}
+                  options={networkChartOptions}
+                />
               </div>
             </div>
 
@@ -441,58 +483,6 @@ export default function SystemDetail() {
                     ]
                   }}
                   options={networkChartOptions}
-                />
-              </div>
-            </div>
-
-            {/* Uptime */}
-            <div className="card p-6">
-              <div className="flex items-center space-x-2 mb-4">
-                <Server className="w-5 h-5 text-indigo-600" />
-                <h3 className="text-lg font-semibold text-gray-900">System Uptime</h3>
-              </div>
-              <div className="h-64">
-                <Line 
-                  data={prepareChartData('uptime_seconds', 'Uptime (seconds)', '#4f46e5')} 
-                  options={{
-                    ...chartOptions,
-                    scales: {
-                      y: {
-                        beginAtZero: true,
-                        ticks: {
-                          callback: (value: any) => {
-                            const hours = Math.floor(value / 3600)
-                            return hours + 'h'
-                          }
-                        }
-                      }
-                    }
-                  }}
-                />
-              </div>
-            </div>
-
-            {/* Logged In Users */}
-            <div className="card p-6">
-              <div className="flex items-center space-x-2 mb-4">
-                <Activity className="w-5 h-5 text-cyan-600" />
-                <h3 className="text-lg font-semibold text-gray-900">Logged In Users</h3>
-              </div>
-              <div className="h-64">
-                <Line 
-                  data={prepareChartData('logged_in_users', 'Users', '#06b6d4')} 
-                  options={{
-                    ...chartOptions,
-                    scales: {
-                      y: {
-                        beginAtZero: true,
-                        ticks: {
-                          stepSize: 1,
-                          callback: (value: any) => Math.floor(value)
-                        }
-                      }
-                    }
-                  }}
                 />
               </div>
             </div>
