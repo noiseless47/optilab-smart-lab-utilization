@@ -48,12 +48,18 @@ interface System {
 interface Metric {
   timestamp: string
   cpu_percent?: number
+  cpu_temperature?: number
   ram_percent?: number
   disk_percent?: number
+  disk_read_mbps?: number
+  disk_write_mbps?: number
   network_sent_mbps?: number
   network_recv_mbps?: number
-  gpu_percent?: number
   uptime_seconds?: number
+  logged_in_users?: number
+  gpu_percent?: number
+  gpu_memory_used_gb?: number
+  gpu_temperature?: number
 }
 
 export default function SystemDetail() {
@@ -166,7 +172,18 @@ export default function SystemDetail() {
     scales: {
       y: {
         beginAtZero: true,
-        max: 100,
+        ticks: {
+          callback: (value: any) => value.toFixed(2)
+        }
+      }
+    }
+  }
+
+  const percentChartOptions = {
+    ...chartOptions,
+    scales: {
+      y: {
+        beginAtZero: true,
         ticks: {
           callback: (value: any) => value + '%'
         }
@@ -180,7 +197,19 @@ export default function SystemDetail() {
       y: {
         beginAtZero: true,
         ticks: {
-          callback: (value: any) => value + ' Mbps'
+          callback: (value: any) => value.toFixed(2) + ' Mbps'
+        }
+      }
+    }
+  }
+
+  const tempChartOptions = {
+    ...chartOptions,
+    scales: {
+      y: {
+        beginAtZero: true,
+        ticks: {
+          callback: (value: any) => value.toFixed(1) + '°C'
         }
       }
     }
@@ -321,7 +350,18 @@ export default function SystemDetail() {
                 <h3 className="text-lg font-semibold text-gray-900">CPU Usage</h3>
               </div>
               <div className="h-64">
-                <Line data={prepareChartData('cpu_percent', 'CPU %', '#9333ea')} options={chartOptions} />
+                <Line data={prepareChartData('cpu_percent', 'CPU %', '#9333ea')} options={percentChartOptions} />
+              </div>
+            </div>
+
+            {/* CPU Temperature */}
+            <div className="card p-6">
+              <div className="flex items-center space-x-2 mb-4">
+                <Cpu className="w-5 h-5 text-red-600" />
+                <h3 className="text-lg font-semibold text-gray-900">CPU Temperature</h3>
+              </div>
+              <div className="h-64">
+                <Line data={prepareChartData('cpu_temperature', 'Temperature °C', '#dc2626')} options={tempChartOptions} />
               </div>
             </div>
 
@@ -332,7 +372,7 @@ export default function SystemDetail() {
                 <h3 className="text-lg font-semibold text-gray-900">RAM Usage</h3>
               </div>
               <div className="h-64">
-                <Line data={prepareChartData('ram_percent', 'RAM %', '#16a34a')} options={chartOptions} />
+                <Line data={prepareChartData('ram_percent', 'RAM %', '#16a34a')} options={percentChartOptions} />
               </div>
             </div>
 
@@ -343,7 +383,29 @@ export default function SystemDetail() {
                 <h3 className="text-lg font-semibold text-gray-900">Disk Usage</h3>
               </div>
               <div className="h-64">
-                <Line data={prepareChartData('disk_percent', 'Disk %', '#ea580c')} options={chartOptions} />
+                <Line data={prepareChartData('disk_percent', 'Disk %', '#ea580c')} options={percentChartOptions} />
+              </div>
+            </div>
+
+            {/* Disk Read Speed */}
+            <div className="card p-6">
+              <div className="flex items-center space-x-2 mb-4">
+                <HardDrive className="w-5 h-5 text-teal-600" />
+                <h3 className="text-lg font-semibold text-gray-900">Disk Read Speed</h3>
+              </div>
+              <div className="h-64">
+                <Line data={prepareChartData('disk_read_mbps', 'Read MB/s', '#0d9488')} options={networkChartOptions} />
+              </div>
+            </div>
+
+            {/* Disk Write Speed */}
+            <div className="card p-6">
+              <div className="flex items-center space-x-2 mb-4">
+                <HardDrive className="w-5 h-5 text-amber-600" />
+                <h3 className="text-lg font-semibold text-gray-900">Disk Write Speed</h3>
+              </div>
+              <div className="h-64">
+                <Line data={prepareChartData('disk_write_mbps', 'Write MB/s', '#d97706')} options={networkChartOptions} />
               </div>
             </div>
 
@@ -382,6 +444,110 @@ export default function SystemDetail() {
                 />
               </div>
             </div>
+
+            {/* Uptime */}
+            <div className="card p-6">
+              <div className="flex items-center space-x-2 mb-4">
+                <Server className="w-5 h-5 text-indigo-600" />
+                <h3 className="text-lg font-semibold text-gray-900">System Uptime</h3>
+              </div>
+              <div className="h-64">
+                <Line 
+                  data={prepareChartData('uptime_seconds', 'Uptime (seconds)', '#4f46e5')} 
+                  options={{
+                    ...chartOptions,
+                    scales: {
+                      y: {
+                        beginAtZero: true,
+                        ticks: {
+                          callback: (value: any) => {
+                            const hours = Math.floor(value / 3600)
+                            return hours + 'h'
+                          }
+                        }
+                      }
+                    }
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* Logged In Users */}
+            <div className="card p-6">
+              <div className="flex items-center space-x-2 mb-4">
+                <Activity className="w-5 h-5 text-cyan-600" />
+                <h3 className="text-lg font-semibold text-gray-900">Logged In Users</h3>
+              </div>
+              <div className="h-64">
+                <Line 
+                  data={prepareChartData('logged_in_users', 'Users', '#06b6d4')} 
+                  options={{
+                    ...chartOptions,
+                    scales: {
+                      y: {
+                        beginAtZero: true,
+                        ticks: {
+                          stepSize: 1,
+                          callback: (value: any) => Math.floor(value)
+                        }
+                      }
+                    }
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* GPU Usage (if available) */}
+            {metrics.some(m => m.gpu_percent !== null && m.gpu_percent !== undefined) && (
+              <div className="card p-6">
+                <div className="flex items-center space-x-2 mb-4">
+                  <Activity className="w-5 h-5 text-pink-600" />
+                  <h3 className="text-lg font-semibold text-gray-900">GPU Usage</h3>
+                </div>
+                <div className="h-64">
+                  <Line data={prepareChartData('gpu_percent', 'GPU %', '#ec4899')} options={percentChartOptions} />
+                </div>
+              </div>
+            )}
+
+            {/* GPU Memory (if available) */}
+            {metrics.some(m => m.gpu_memory_used_gb !== null && m.gpu_memory_used_gb !== undefined) && (
+              <div className="card p-6">
+                <div className="flex items-center space-x-2 mb-4">
+                  <Activity className="w-5 h-5 text-rose-600" />
+                  <h3 className="text-lg font-semibold text-gray-900">GPU Memory</h3>
+                </div>
+                <div className="h-64">
+                  <Line 
+                    data={prepareChartData('gpu_memory_used_gb', 'Memory GB', '#f43f5e')} 
+                    options={{
+                      ...chartOptions,
+                      scales: {
+                        y: {
+                          beginAtZero: true,
+                          ticks: {
+                            callback: (value: any) => value.toFixed(2) + ' GB'
+                          }
+                        }
+                      }
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* GPU Temperature (if available) */}
+            {metrics.some(m => m.gpu_temperature !== null && m.gpu_temperature !== undefined) && (
+              <div className="card p-6">
+                <div className="flex items-center space-x-2 mb-4">
+                  <Activity className="w-5 h-5 text-orange-600" />
+                  <h3 className="text-lg font-semibold text-gray-900">GPU Temperature</h3>
+                </div>
+                <div className="h-64">
+                  <Line data={prepareChartData('gpu_temperature', 'Temperature °C', '#f97316')} options={tempChartOptions} />
+                </div>
+              </div>
+            )}
           </div>
         </>
       ) : (
