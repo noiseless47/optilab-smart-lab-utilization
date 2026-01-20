@@ -88,4 +88,19 @@ router.get("/summary", async (req, res) => {
     }
 });
 
+// GET aggregate metrics (from TimescaleDB continuous aggregates)
+router.get("/metrics/aggregate", async (req, res) => {
+    try {
+        const sysID = req.params.sysID;
+        const type = req.query.type || 'hourly'; // 'hourly' or 'daily'
+        const limit = parseInt(req.query.limit) || 24;
+        
+        const aggregates = await metricsModel.getAggregateMetrics(sysID, type, limit);
+        res.status(200).json(aggregates);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+        console.error("Error:", err.message);
+    }
+});
+
 module.exports = router;

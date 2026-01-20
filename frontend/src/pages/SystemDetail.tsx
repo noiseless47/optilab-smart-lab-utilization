@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Server, Cpu, HardDrive, Activity, Network, Plus } from 'lucide-react'
+import { ArrowLeft, Server, Cpu, HardDrive, Activity, Network, Plus, BarChart3, TrendingUp } from 'lucide-react'
 import { Line } from 'react-chartjs-2'
 import {
   Chart as ChartJS,
@@ -62,15 +62,39 @@ interface Metric {
   gpu_temperature?: number
 }
 
+interface AggregateMetric {
+  hour_bucket?: string
+  day_bucket?: string
+  system_id: string
+  avg_cpu_percent: number
+  max_cpu_percent: number
+  p95_cpu_percent: number
+  avg_ram_percent: number
+  max_ram_percent: number
+  p95_ram_percent: number
+  avg_gpu_percent?: number
+  max_gpu_percent?: number
+  avg_disk_io_wait?: number
+  total_disk_read_gb?: number
+  total_disk_write_gb?: number
+  avg_load_1min?: number
+  metric_count: number
+}
+
 export default function SystemDetail() {
   const { deptId, labId, systemId } = useParams<{ deptId: string; labId: string; systemId: string }>()
   const navigate = useNavigate()
   
   const [system, setSystem] = useState<System | null>(null)
   const [metrics, setMetrics] = useState<Metric[]>([])
+  const [aggregateMetrics, setAggregateMetrics] = useState<AggregateMetric[]>([])
   const [loading, setLoading] = useState(true)
   const [showMaintenanceModal, setShowMaintenanceModal] = useState(false)
   const [toasts, setToasts] = useState<ToastMessage[]>([])
+  
+  // Toggle states for Live vs Aggregate and view type
+  const [metricsMode, setMetricsMode] = useState<'live' | 'aggregate'>('live')
+  const [viewType, setViewType] = useState<'graphs' | 'numeric'>('graphs')
   
   const [maintenanceForm, setMaintenanceForm] = useState({
     severity: 'medium',
@@ -96,9 +120,10 @@ export default function SystemDetail() {
     try {
       setLoading(true)
       // First get all systems in the lab, then find the specific one
-      const [labSystemsRes, metricsRes] = await Promise.all([
+      const [labSystemsRes, metricsRes, aggregateRes] = await Promise.all([
         api.get(`/departments/${deptId}/labs/${labId}/systems`),
-        api.get(`/departments/${deptId}/labs/${labId}/${systemId}/metrics`, { params: { hours: 24, limit: 100 } })
+        api.get(`/departments/${deptId}/labs/${labId}/${systemId}/metrics`, { params: { hours: 24, limit: 100 } }),
+        api.get(`/departments/${deptId}/labs/${labId}/${systemId}/metrics/aggregate`, { params: { type: 'hourly' } }).catch(() => ({ data: [] }))
       ])
       
       // Find the specific system from the lab's systems
@@ -109,6 +134,7 @@ export default function SystemDetail() {
       
       setSystem(system)
       setMetrics(metricsRes.data.reverse())
+      setAggregateMetrics(aggregateRes.data || [])
     } catch (error) {
       console.error('Failed to fetch system data:', error)
       addToast('Failed to load system data', 'error')
@@ -336,6 +362,65 @@ export default function SystemDetail() {
         </div>
       </div>
 
+      {/* Metrics Mode Toggle */}
+      <div className="flex items-center justify-between mb-8">
+        <h2 className="text-2xl font-bold text-gray-900">Performance Metrics</h2>
+        
+        <div className="flex items-center space-x-6">
+          {/* Mode Toggle: Live vs Aggregate */}
+          <div className="flex items-center space-x-2 bg-gray-100 rounded-lg p-1">
+            <button
+              onClick={() => setMetricsMode('live')}
+              className={`px-4 py-2 rounded-md font-medium transition ${
+                metricsMode === 'live'
+                  ? 'bg-white text-orange-600 shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              <TrendingUp className="w-4 h-4 inline mr-2" />
+              Live
+            </button>
+            <button
+              onClick={() => setMetricsMode('aggregate')}
+              className={`px-4 py-2 rounded-md font-medium transition ${
+                metricsMode === 'aggregate'
+                  ? 'bg-white text-orange-600 shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              <BarChart3 className="w-4 h-4 inline mr-2" />
+              Aggregate
+            </button>
+          </div>
+
+          {/* View Type Toggle: Only show for Live metrics */}
+          {metricsMode === 'live' && (
+            <div className="flex items-center space-x-2 bg-gray-100 rounded-lg p-1">
+              <button
+                onClick={() => setViewType('graphs')}
+                className={`px-4 py-2 rounded-md font-medium transition ${
+                  viewType === 'graphs'
+                    ? 'bg-white text-blue-600 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                Graphs
+              </button>
+              <button
+                onClick={() => setViewType('numeric')}
+                className={`px-4 py-2 rounded-md font-medium transition ${
+                  viewType === 'numeric'
+                    ? 'bg-white text-blue-600 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                Numeric
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* Additional System Info */}
       <div className="card p-6 mb-8">
         <h3 className="text-lg font-semibold text-gray-900 mb-4">System Information</h3>
@@ -366,23 +451,26 @@ export default function SystemDetail() {
       </div>
 
       {/* Metrics Visualization */}
-      {metrics.length > 0 ? (
-        <>
-          <h2 className="text-2xl font-bold text-gray-900 mb-6">Performance Metrics (Last 24 Hours)</h2>
-          
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-            {/* CPU Usage */}
-            <div className="card p-6">
-              <div className="flex items-center space-x-2 mb-4">
-                <Cpu className="w-5 h-5 text-purple-600" />
-                <h3 className="text-lg font-semibold text-gray-900">CPU Usage</h3>
-              </div>
-              <div className="h-64">
-                <Line data={prepareChartData('cpu_percent', 'CPU %', '#9333ea')} options={percentChartOptions} />
-              </div>
-            </div>
+      {metricsMode === 'live' ? (
+        // LIVE METRICS SECTION
+        metrics.length > 0 ? (
+          <>
+            {viewType === 'graphs' ? (
+              // LIVE - GRAPHS VIEW
+              <>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+                  {/* CPU Usage */}
+                  <div className="card p-6">
+                    <div className="flex items-center space-x-2 mb-4">
+                      <Cpu className="w-5 h-5 text-purple-600" />
+                      <h3 className="text-lg font-semibold text-gray-900">CPU Usage</h3>
+                    </div>
+                    <div className="h-64">
+                      <Line data={prepareChartData('cpu_percent', 'CPU %', '#9333ea')} options={percentChartOptions} />
+                    </div>
+                  </div>
 
-            {/* CPU Temperature */}
+                  {/* CPU Temperature */}
             <div className="card p-6">
               <div className="flex items-center space-x-2 mb-4">
                 <Cpu className="w-5 h-5 text-red-600" />
@@ -539,13 +627,200 @@ export default function SystemDetail() {
               </div>
             )}
           </div>
-        </>
-      ) : (
+            </>
+            ) : (
+              // LIVE - NUMERIC VIEW
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+                {/* Current CPU */}
+                <div className="card p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <p className="text-sm text-gray-500">CPU Usage</p>
+                      <p className="text-3xl font-bold text-purple-600">{(metrics[metrics.length - 1]?.cpu_percent ?? 0).toFixed(2)}%</p>
+                    </div>
+                    <Cpu className="w-12 h-12 text-purple-200" />
+                  </div>
+                  <p className="text-xs text-gray-400">Latest reading</p>
+                </div>
+
+                {/* Current CPU Temperature */}
+                <div className="card p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <p className="text-sm text-gray-500">CPU Temp</p>
+                      <p className="text-3xl font-bold text-red-600">{(metrics[metrics.length - 1]?.cpu_temperature ?? 0).toFixed(1)}°C</p>
+                    </div>
+                    <Cpu className="w-12 h-12 text-red-200" />
+                  </div>
+                  <p className="text-xs text-gray-400">Latest reading</p>
+                </div>
+
+                {/* Current RAM */}
+                <div className="card p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <p className="text-sm text-gray-500">RAM Usage</p>
+                      <p className="text-3xl font-bold text-green-600">{(metrics[metrics.length - 1]?.ram_percent ?? 0).toFixed(2)}%</p>
+                    </div>
+                    <Activity className="w-12 h-12 text-green-200" />
+                  </div>
+                  <p className="text-xs text-gray-400">Latest reading</p>
+                </div>
+
+                {/* Current Disk */}
+                <div className="card p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <p className="text-sm text-gray-500">Disk Usage</p>
+                      <p className="text-3xl font-bold text-orange-600">{(metrics[metrics.length - 1]?.disk_percent ?? 0).toFixed(2)}%</p>
+                    </div>
+                    <HardDrive className="w-12 h-12 text-orange-200" />
+                  </div>
+                  <p className="text-xs text-gray-400">Latest reading</p>
+                </div>
+
+                {/* Network Upload */}
+                <div className="card p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <p className="text-sm text-gray-500">Network Upload</p>
+                      <p className="text-3xl font-bold text-blue-600">{(metrics[metrics.length - 1]?.network_sent_mbps ?? 0).toFixed(2)} Mbps</p>
+                    </div>
+                    <Network className="w-12 h-12 text-blue-200" />
+                  </div>
+                  <p className="text-xs text-gray-400">Latest reading</p>
+                </div>
+
+                {/* Network Download */}
+                <div className="card p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <p className="text-sm text-gray-500">Network Download</p>
+                      <p className="text-3xl font-bold text-green-600">{(metrics[metrics.length - 1]?.network_recv_mbps ?? 0).toFixed(2)} Mbps</p>
+                    </div>
+                    <Network className="w-12 h-12 text-green-200" />
+                  </div>
+                  <p className="text-xs text-gray-400">Latest reading</p>
+                </div>
+
+                {/* Disk Read Speed */}
+                <div className="card p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <p className="text-sm text-gray-500">Disk Read</p>
+                      <p className="text-3xl font-bold text-teal-600">{(metrics[metrics.length - 1]?.disk_read_mbps ?? 0).toFixed(2)} MB/s</p>
+                    </div>
+                    <HardDrive className="w-12 h-12 text-teal-200" />
+                  </div>
+                  <p className="text-xs text-gray-400">Latest reading</p>
+                </div>
+
+                {/* Disk Write Speed */}
+                <div className="card p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <p className="text-sm text-gray-500">Disk Write</p>
+                      <p className="text-3xl font-bold text-amber-600">{(metrics[metrics.length - 1]?.disk_write_mbps ?? 0).toFixed(2)} MB/s</p>
+                    </div>
+                    <HardDrive className="w-12 h-12 text-amber-200" />
+                  </div>
+                  <p className="text-xs text-gray-400">Latest reading</p>
+                </div>
+
+                {metrics[metrics.length - 1]?.gpu_percent !== null && metrics[metrics.length - 1]?.gpu_percent !== undefined && (
+                  <div className="card p-6">
+                    <div className="flex items-center justify-between mb-4">
+                      <div>
+                        <p className="text-sm text-gray-500">GPU Usage</p>
+                        <p className="text-3xl font-bold text-pink-600">{(metrics[metrics.length - 1]?.gpu_percent ?? 0).toFixed(2)}%</p>
+                      </div>
+                      <Activity className="w-12 h-12 text-pink-200" />
+                    </div>
+                    <p className="text-xs text-gray-400">Latest reading</p>
+                  </div>
+                )}
+              </div>
+            )}
+          </>
+        ) : (
         <div className="card p-12 text-center">
           <Activity className="w-16 h-16 text-gray-300 mx-auto mb-4" />
           <h3 className="text-xl font-semibold text-gray-900 mb-2">No Metrics Available</h3>
           <p className="text-gray-600">No performance metrics have been collected for this system yet.</p>
         </div>
+      )
+      ) : (
+        // AGGREGATE METRICS SECTION
+        aggregateMetrics.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+            {aggregateMetrics.map((metric, idx) => (
+              <div key={idx} className="card p-6">
+                <h3 className="text-sm font-semibold text-gray-600 mb-4">
+                  {metric.hour_bucket ? new Date(metric.hour_bucket).toLocaleString() : new Date(metric.day_bucket || '').toLocaleString()}
+                </h3>
+                <div className="space-y-3">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-500">Avg CPU</span>
+                    <span className="font-bold text-purple-600">{metric.avg_cpu_percent.toFixed(1)}%</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-500">Max CPU</span>
+                    <span className="font-bold text-purple-700">{metric.max_cpu_percent.toFixed(1)}%</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-500">P95 CPU</span>
+                    <span className="font-bold text-purple-500">{metric.p95_cpu_percent.toFixed(1)}%</span>
+                  </div>
+                  <hr className="my-2" />
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-500">Avg RAM</span>
+                    <span className="font-bold text-green-600">{metric.avg_ram_percent.toFixed(1)}%</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-500">Max RAM</span>
+                    <span className="font-bold text-green-700">{metric.max_ram_percent.toFixed(1)}%</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-500">P95 RAM</span>
+                    <span className="font-bold text-green-500">{metric.p95_ram_percent.toFixed(1)}%</span>
+                  </div>
+                  {metric.total_disk_read_gb !== undefined && (
+                    <>
+                      <hr className="my-2" />
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-gray-500">Disk Read</span>
+                        <span className="font-bold text-teal-600">{metric.total_disk_read_gb.toFixed(2)} GB</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-gray-500">Disk Write</span>
+                        <span className="font-bold text-amber-600">{metric.total_disk_write_gb?.toFixed(2)} GB</span>
+                      </div>
+                    </>
+                  )}
+                  {metric.avg_gpu_percent !== undefined && metric.avg_gpu_percent !== null && (
+                    <>
+                      <hr className="my-2" />
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-gray-500">Avg GPU</span>
+                        <span className="font-bold text-pink-600">{metric.avg_gpu_percent.toFixed(1)}%</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-gray-500">Max GPU</span>
+                        <span className="font-bold text-pink-700">{metric.max_gpu_percent?.toFixed(1)}%</span>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="card p-12 text-center">
+            <BarChart3 className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+            <h3 className="text-xl font-semibold text-gray-900 mb-2">No Aggregate Data Available</h3>
+            <p className="text-gray-600">Aggregate metrics are still being computed. Please check back later.</p>
+          </div>
+        )
       )}
 
       {/* Add to Maintenance Modal */}

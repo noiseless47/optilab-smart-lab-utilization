@@ -113,7 +113,10 @@ class MetricsModel {
                     avg_cpu_percent, max_cpu_percent, min_cpu_percent, p95_cpu_percent,
                     avg_ram_percent, max_ram_percent, p95_ram_percent,
                     avg_gpu_percent, max_gpu_percent,
-                    avg_disk_percent, max_disk_percent,
+                    avg_disk_io_wait,
+                    total_disk_read_gb,
+                    total_disk_write_gb,
+                    avg_uptime_seconds,
                     metric_count
                 FROM hourly_performance_stats
                 WHERE system_id = ${systemID}
@@ -156,9 +159,13 @@ class MetricsModel {
                 SELECT
                     day_bucket as date,
                     avg_cpu_percent, max_cpu_percent, p95_cpu_percent, cpu_above_80_minutes,
-                    avg_ram_percent, max_ram_percent, p95_ram_percent, ram_above_80_minutes,
-                    avg_gpu_percent, max_gpu_percent,
-                    avg_disk_percent, max_disk_percent,
+                    avg_ram_percent, max_ram_percent, p95_ram_percent,
+                    avg_gpu_percent, max_gpu_percent, gpu_idle_minutes,
+                    avg_disk_io_wait,
+                    total_disk_read_gb,
+                    total_disk_write_gb,
+                    is_underutilized,
+                    is_overutilized,
                     metric_count
                 FROM daily_performance_stats
                 WHERE system_id = ${systemID}
@@ -179,8 +186,11 @@ class MetricsModel {
                     system_id,
                     day_bucket as date,
                     avg_cpu_percent, max_cpu_percent, p95_cpu_percent, cpu_above_80_minutes,
-                    avg_ram_percent, max_ram_percent, p95_ram_percent, ram_above_80_minutes,
+                    avg_ram_percent, max_ram_percent, p95_ram_percent,
                     avg_gpu_percent, max_gpu_percent,
+                    avg_disk_io_wait,
+                    total_disk_read_gb,
+                    total_disk_write_gb,
                     metric_count
                 FROM daily_performance_stats
                 WHERE system_id = ANY(${systemIDs})
@@ -278,6 +288,71 @@ class MetricsModel {
             this.sql`DELETE FROM metrics WHERE timestamp < NOW() - (${days}::integer || ' days')::interval`,
             'Failed to cleanup old metrics'
         )
+    }
+
+    // Get aggregate metrics from TimescaleDB continuous aggregate views
+    async getAggregateMetrics(systemID, type = 'hourly', limit = 24) {
+        this.validateID(systemID)
+        
+        if (type === 'hourly') {
+            return await this.query(
+                this.sql`
+                    SELECT
+                        system_id,
+                        hour_bucket,
+                        avg_cpu_percent,
+                        max_cpu_percent,
+                        min_cpu_percent,
+                        COALESCE(approx_percentile(0.95, p95_cpu_percent_agg), avg_cpu_percent) as p95_cpu_percent,
+                        avg_ram_percent,
+                        max_ram_percent,
+                        COALESCE(approx_percentile(0.95, p95_ram_percent_agg), avg_ram_percent) as p95_ram_percent,
+                        avg_gpu_percent,
+                        max_gpu_percent,
+                        avg_disk_io_wait,
+                        total_disk_read_gb,
+                        total_disk_write_gb,
+                        avg_uptime_seconds,
+                        metric_count
+                    FROM hourly_performance_stats
+                    WHERE system_id = ${systemID}
+                    ORDER BY hour_bucket DESC
+                    LIMIT ${limit}
+                `,
+                'Failed to get hourly aggregate metrics'
+            )
+        } else if (type === 'daily') {
+            return await this.query(
+                this.sql`
+                    SELECT
+                        system_id,
+                        day_bucket,
+                        avg_cpu_percent,
+                        max_cpu_percent,
+                        COALESCE(approx_percentile(0.95, p95_cpu_percent_agg), avg_cpu_percent) as p95_cpu_percent,
+                        cpu_above_80_minutes,
+                        avg_ram_percent,
+                        max_ram_percent,
+                        COALESCE(approx_percentile(0.95, p95_ram_percent_agg), avg_ram_percent) as p95_ram_percent,
+                        avg_gpu_percent,
+                        max_gpu_percent,
+                        gpu_idle_minutes,
+                        avg_disk_io_wait,
+                        total_disk_read_gb,
+                        total_disk_write_gb,
+                        is_underutilized,
+                        is_overutilized,
+                        metric_count
+                    FROM daily_performance_stats
+                    WHERE system_id = ${systemID}
+                    ORDER BY day_bucket DESC
+                    LIMIT ${limit}
+                `,
+                'Failed to get daily aggregate metrics'
+            )
+        } else {
+            throw new Error('Invalid aggregate type. Must be "hourly" or "daily"')
+        }
     }
 }
 

@@ -78,24 +78,24 @@ SELECT
     AVG(cpu_percent) AS avg_cpu_percent,
     MAX(cpu_percent) AS max_cpu_percent,
     MIN(cpu_percent) AS min_cpu_percent,
-    APPROX_PERCENTILE(0.95, cpu_percent) AS p95_cpu_percent,
+    APPROX_PERCENTILE(0.95, percentile_agg(cpu_percent)) AS p95_cpu_percent,
     
     -- RAM Statistics
     AVG(ram_percent) AS avg_ram_percent,
     MAX(ram_percent) AS max_ram_percent,
-    APPROX_PERCENTILE(0.95, ram_percent) AS p95_ram_percent,
+    APPROX_PERCENTILE(0.95, percentile_agg(ram_percent)) AS p95_ram_percent,
     
     -- GPU Statistics
-    AVG(gpu_utilization) AS avg_gpu_percent,
-    MAX(gpu_utilization) AS max_gpu_percent,
+    AVG(gpu_percent) AS avg_gpu_percent,
+    MAX(gpu_percent) AS max_gpu_percent,
     
     -- Disk Statistics
-    AVG(disk_io_wait_percent) AS avg_disk_io_wait,
-    SUM(COALESCE(disk_read_mb_s, 0) * 60 / 1024.0) AS total_disk_read_gb, -- Convert to GB
-    SUM(COALESCE(disk_write_mb_s, 0) * 60 / 1024.0) AS total_disk_write_gb,
+    AVG(disk_percent) AS avg_disk_io_wait,
+    SUM(COALESCE(disk_read_mbps, 0) * 300 / 1024.0) AS total_disk_read_gb, -- Convert MB/s to GB (5min intervals)
+    SUM(COALESCE(disk_write_mbps, 0) * 300 / 1024.0) AS total_disk_write_gb,
     
-    -- Load Statistics
-    AVG(load_avg_1min) AS avg_load_1min,
+    -- Uptime Statistics
+    AVG(uptime_seconds) AS avg_uptime_seconds,
     
     -- Count
     COUNT(*) AS metric_count
@@ -122,24 +122,23 @@ SELECT
     -- CPU Statistics
     AVG(cpu_percent) AS avg_cpu_percent,
     MAX(cpu_percent) AS max_cpu_percent,
-    APPROX_PERCENTILE(0.95, cpu_percent) AS p95_cpu_percent,
+    APPROX_PERCENTILE(0.95, percentile_agg(cpu_percent)) AS p95_cpu_percent,
     SUM(CASE WHEN cpu_percent > 80 THEN 1 ELSE 0 END) * 5 AS cpu_above_80_minutes, -- Assuming 5-min intervals
     
     -- RAM Statistics
     AVG(ram_percent) AS avg_ram_percent,
     MAX(ram_percent) AS max_ram_percent,
-    APPROX_PERCENTILE(0.95, ram_percent) AS p95_ram_percent,
-    SUM(CASE WHEN COALESCE(swap_percent, 0) > 0 THEN 1 ELSE 0 END) * 5 AS swap_used_minutes,
+    APPROX_PERCENTILE(0.95, percentile_agg(ram_percent)) AS p95_ram_percent,
     
     -- GPU Statistics
-    AVG(gpu_utilization) AS avg_gpu_percent,
-    MAX(gpu_utilization) AS max_gpu_percent,
-    SUM(CASE WHEN COALESCE(gpu_utilization, 0) < 10 THEN 1 ELSE 0 END) * 5 AS gpu_idle_minutes,
+    AVG(gpu_percent) AS avg_gpu_percent,
+    MAX(gpu_percent) AS max_gpu_percent,
+    SUM(CASE WHEN COALESCE(gpu_percent, 0) < 10 THEN 1 ELSE 0 END) * 5 AS gpu_idle_minutes,
     
     -- Disk Statistics
-    AVG(disk_io_wait_percent) AS avg_disk_io_wait,
-    SUM(COALESCE(disk_read_mb_s, 0) * 300 / 1024.0) AS total_disk_read_gb, -- 5-min intervals
-    SUM(COALESCE(disk_write_mb_s, 0) * 300 / 1024.0) AS total_disk_write_gb,
+    AVG(disk_percent) AS avg_disk_io_wait,
+    SUM(COALESCE(disk_read_mbps, 0) * 300 / 1024.0) AS total_disk_read_gb, -- 5-min intervals
+    SUM(COALESCE(disk_write_mbps, 0) * 300 / 1024.0) AS total_disk_write_gb,
     
     -- Utilization Flags
     CASE 
@@ -148,8 +147,8 @@ SELECT
     END AS is_underutilized,
     
     CASE 
-        WHEN APPROX_PERCENTILE(0.95, COALESCE(cpu_percent, 0)) > 90 
-            OR APPROX_PERCENTILE(0.95, COALESCE(ram_percent, 0)) > 90 
+        WHEN APPROX_PERCENTILE(0.95, percentile_agg(COALESCE(cpu_percent, 0))) > 90 
+            OR APPROX_PERCENTILE(0.95, percentile_agg(COALESCE(ram_percent, 0))) > 90 
         THEN TRUE 
         ELSE FALSE 
     END AS is_overutilized,
