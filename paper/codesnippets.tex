@@ -1,0 +1,252 @@
+\chapter*{APPENDIX A: CODE SNIPPETS}
+\addcontentsline{toc}{chapter}{APPENDIX A: CODE SNIPPETS}
+
+\section*{A.1 Continuous Aggregates for Performance Optimization}
+
+\begin{lstlisting}[language=SQL, caption=Hourly Metrics Continuous Aggregate]
+-- Create hourly aggregate view
+CREATE MATERIALIZED VIEW hourly_metrics
+WITH (timescaledb.continuous) AS
+SELECT 
+    time_bucket('1 hour', collected_at) AS hour,
+    system_id,
+    COUNT(*) as sample_count,
+    AVG(cpu_percent) AS avg_cpu,
+    MAX(cpu_percent) AS max_cpu,
+    MIN(cpu_percent) AS min_cpu,
+    PERCENTILE_CONT(0.95) WITHIN GROUP 
+        (ORDER BY cpu_percent) AS p95_cpu,
+    AVG(ram_percent) AS avg_ram,
+    MAX(ram_percent) AS max_ram,
+    AVG(disk_percent) AS avg_disk,
+    AVG(network_sent_mbps + network_recv_mbps) AS avg_network,
+    SUM(CASE WHEN cpu_percent > 80 THEN 1 ELSE 0 END) 
+        AS high_cpu_count
+FROM metrics
+GROUP BY hour, system_id;
+
+-- Add refresh policy
+SELECT add_continuous_aggregate_policy(
+    'hourly_metrics',
+    start_offset => INTERVAL '3 hours',
+    end_offset => INTERVAL '1 hour',
+    schedule_interval => INTERVAL '1 hour'
+);
+\end{lstlisting}
+
+\section*{A.3 Analytics Function - Bottleneck Detection}
+
+\begin{lstlisting}[language=SQL, caption=Stored Procedure for Bottleneck Detection]
+CREATE OR REPLACE FUNCTION detect_bottleneck(
+    p_system_id INT,
+    p_hours INT DEFAULT 24
+)
+RETURNS TABLE (
+    bottleneck_type VARCHAR,
+    avg_cpu NUMERIC,
+    avg_ram NUMERIC,
+    avg_disk NUMERIC,
+    recommendation TEXT
+) AS $$
+DECLARE
+    v_avg_cpu NUMERIC;
+    v_avg_ram NUMERIC;
+    v_avg_disk NUMERIC;
+    v_bottleneck VARCHAR;
+    v_recommendation TEXT;
+BEGIN
+    -- Calculate averages
+    SELECT 
+        AVG(cpu_percent),
+        AVG(ram_percent),
+        AVG(disk_percent)
+    INTO v_avg_cpu, v_avg_ram, v_avg_disk
+    FROM metrics
+    WHERE system_id = p_system_id
+        AND collected_at > NOW() - (p_hours || ' hours')::INTERVAL;
+    
+    -- Determine bottleneck
+    IF v_avg_cpu > 80 THEN
+        v_bottleneck := 'CPU-bound';
+        v_recommendation := 'Consider CPU upgrade or workload distribution';
+    ELSIF v_avg_ram > 85 THEN
+        v_bottleneck := 'RAM-bound';
+        v_recommendation := 'RAM upgrade recommended';
+    ELSIF v_avg_disk > 90 THEN
+        v_bottleneck := 'Disk-bound';
+        v_recommendation := 'SSD upgrade or disk cleanup needed';
+    ELSE
+        v_bottleneck := 'Balanced';
+        v_recommendation := 'System performing well';
+    END IF;
+    
+    RETURN QUERY SELECT 
+        v_bottleneck, 
+        v_avg_cpu, 
+        v_avg_ram, 
+        v_avg_disk, 
+        v_recommendation;
+END;
+$$ LANGUAGE plpgsql;
+\end{lstlisting}
+
+\section*{A.4 Network Scanner Script}
+
+\begin{lstlisting}[language=bash, caption=Network Discovery and Registration (scanner.sh)]
+#!/bin/bash
+
+# Configuration
+DB_HOST="localhost"
+DB_NAME="optilab_monitoring"
+DB_USER="optilab"
+SCAN_TYPE="${3:-nmap}"
+
+# Parse inputs
+TARGET_RANGE="$1"
+DEPT_ID="$2"
+
+echo "Starting network scan for $TARGET_RANGE"
+
+# Create scan record
+SCAN_ID=$(psql -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" -tAc \
+    "INSERT INTO network_scans 
+    (dept_id, scan_type, target_range, scan_start, status) 
+    VALUES ($DEPT_ID, '$SCAN_TYPE', '$TARGET_RANGE', NOW(), 'running') 
+    RETURNING scan_id")
+
+# Perform nmap scan
+nmap -sn -PR "$TARGET_RANGE" | \
+    grep "Nmap scan report" | \
+    awk '{print $NF}' | \
+    tr -d '()' > /tmp/scan_results_$SCAN_ID.txt
+
+# Process results
+SYSTEMS_FOUND=0
+while IFS= read -r IP; do
+    HOSTNAME=$(dig +short -x "$IP" | sed 's/\.$//')
+    [ -z "$HOSTNAME" ] && HOSTNAME="unknown-$IP"
+    
+    psql -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" <<-SQL
+        INSERT INTO systems 
+        (hostname, ip_address, dept_id, last_seen, status)
+        VALUES ('$HOSTNAME', '$IP', $DEPT_ID, NOW(), 'active')
+        ON CONFLICT (ip_address) 
+        DO UPDATE SET last_seen = NOW(), status = 'active';
+SQL
+    
+    ((SYSTEMS_FOUND++))
+    echo "Registered: $IP ($HOSTNAME)"
+done < /tmp/scan_results_$SCAN_ID.txt
+
+# Update scan record
+psql -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" <<-SQL
+    UPDATE network_scans 
+    SET scan_end = NOW(),
+        systems_found = $SYSTEMS_FOUND,
+        status = 'completed'
+    WHERE scan_id = $SCAN_ID;
+SQL
+
+echo "Scan completed: $SYSTEMS_FOUND systems found"
+rm -f /tmp/scan_results_$SCAN_ID.txt
+\end{lstlisting}
+
+\section*{A.5 Metrics Collector Script}
+
+\begin{lstlisting}[language=bash, caption=System Metrics Collection (metrics\_collector.sh)]
+#!/bin/bash
+
+# Get CPU percentage
+get_cpu_percent() {
+    if [ -f /proc/stat ]; then
+        local cpu1=($(grep '^cpu ' /proc/stat))
+        sleep 1
+        local cpu2=($(grep '^cpu ' /proc/stat))
+        
+        local idle1=${cpu1[4]}
+        local idle2=${cpu2[4]}
+        local total1=0; local total2=0
+        
+        for val in "${cpu1[@]:1}"; do 
+            total1=$((total1 + val))
+        done
+        for val in "${cpu2[@]:1}"; do 
+            total2=$((total2 + val))
+        done
+        
+        local idle_delta=$((idle2 - idle1))
+        local total_delta=$((total2 - total1))
+        
+        awk "BEGIN {printf \"%.2f\", 
+            100 * ($total_delta - $idle_delta) / $total_delta}"
+    fi
+}
+
+# Get RAM metrics
+get_ram_metrics() {
+    local total=$(grep MemTotal /proc/meminfo | awk '{print $2}')
+    local available=$(grep MemAvailable /proc/meminfo | awk '{print $2}')
+    local used=$((total - available))
+    
+    local ram_percent=$(awk "BEGIN {
+        printf \"%.2f\", ($used / $total) * 100}")
+    local ram_used_gb=$(awk "BEGIN {
+        printf \"%.2f\", $used / 1024 / 1024}")
+    local ram_total_gb=$(awk "BEGIN {
+        printf \"%.2f\", $total / 1024 / 1024}")
+    
+    echo "$ram_percent|$ram_used_gb|$ram_total_gb"
+}
+
+# Collect and output JSON
+collect_metrics() {
+    local cpu=$(get_cpu_percent)
+    local ram_data=$(get_ram_metrics)
+    
+    cat <<-JSON
+{
+    "hostname": "$(hostname)",
+    "collected_at": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
+    "cpu_percent": $cpu,
+    "ram_percent": $(echo "$ram_data" | cut -d'|' -f1),
+    "ram_used_gb": $(echo "$ram_data" | cut -d'|' -f2),
+    "ram_total_gb": $(echo "$ram_data" | cut -d'|' -f3),
+    "uptime_seconds": $(awk '{print int($1)}' /proc/uptime),
+    "logged_in_users": $(who | wc -l)
+}
+JSON
+}
+
+collect_metrics
+\end{lstlisting}
+
+\section*{A.6 Database Query - Top CPU Consumers}
+
+\begin{lstlisting}[language=SQL, caption=Identifying Top CPU Consuming Systems]
+-- Find systems with highest average CPU usage (last 7 days)
+SELECT 
+    s.system_id,
+    s.hostname,
+    s.ip_address,
+    d.dept_name,
+    l.lab_number,
+    AVG(m.cpu_percent) as avg_cpu,
+    MAX(m.cpu_percent) as max_cpu,
+    PERCENTILE_CONT(0.95) WITHIN GROUP 
+        (ORDER BY m.cpu_percent) as p95_cpu,
+    COUNT(*) as sample_count
+FROM systems s
+JOIN metrics m ON s.system_id = m.system_id
+LEFT JOIN departments d ON s.dept_id = d.dept_id
+LEFT JOIN labs l ON s.lab_id = l.lab_id
+WHERE m.collected_at > NOW() - INTERVAL '7 days'
+GROUP BY s.system_id, s.hostname, s.ip_address, 
+    d.dept_name, l.lab_number
+HAVING AVG(m.cpu_percent) > 50
+ORDER BY avg_cpu DESC
+LIMIT 20;
+\end{lstlisting}
+
+
+
+\vspace{1cm}

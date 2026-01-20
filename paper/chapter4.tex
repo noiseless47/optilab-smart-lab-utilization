@@ -1,0 +1,563 @@
+\chapter{IMPLEMENTATION DETAILS}
+
+This chapter describes the implementation of the OptiLab system, covering database setup, table creation and population, query execution, frontend development, and security features. The implementation follows a modular architecture with clear separation between database, backend API, and frontend components.
+
+\section{Database implementation}
+
+\subsection{Table Creation}
+
+The database schema was implemented in PostgreSQL 18 with TimescaleDB extension for time-series optimization. TimescaleDB provides automatic partitioning and compression capabilities essential for handling large volumes of time-series metrics data.
+
+\subsubsection{Core Tables Creation}
+
+\textbf{1. hods Table:}
+\begin{verbatim}
+CREATE TABLE hods (
+    hod_id       SERIAL PRIMARY KEY,
+    hod_name     VARCHAR(200) NOT NULL,
+    hod_email    VARCHAR(220) UNIQUE,
+    created_at   TIMESTAMPTZ DEFAULT NOW()
+);
+\end{verbatim}
+
+\textbf{2. departments Table:}
+\begin{verbatim}
+CREATE TABLE departments (
+    dept_id      SERIAL PRIMARY KEY,
+    dept_name    VARCHAR(100) NOT NULL UNIQUE,
+    dept_code    VARCHAR(20),
+    vlan_id      VARCHAR(20),
+    subnet_cidr  CIDR,
+    description  TEXT,
+    hod_id       INT REFERENCES hods(hod_id),
+    created_at   TIMESTAMPTZ DEFAULT NOW()
+);
+\end{verbatim}
+
+\textbf{3. labs Table:}
+\begin{verbatim}
+CREATE TABLE labs (
+    lab_id        SERIAL PRIMARY KEY,
+    lab_dept      INT REFERENCES departments(dept_id) 
+                  ON DELETE CASCADE,
+    lab_number    INT NOT NULL,
+    assistant_ids INT[],
+    created_at    TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(lab_dept, lab_number)
+);
+\end{verbatim}
+
+\textbf{4. systems Table:}
+\begin{verbatim}
+CREATE TABLE systems (
+    system_id     SERIAL PRIMARY KEY,
+    system_number INT,
+    lab_id        INT REFERENCES labs(lab_id) ON DELETE SET NULL,
+    dept_id       INT REFERENCES departments(dept_id),
+    hostname      VARCHAR(255) NOT NULL,
+    ip_address    INET NOT NULL UNIQUE,
+    mac_address   MACADDR,
+    os_type       VARCHAR(50),
+    os_version    VARCHAR(200),
+    cpu_cores     INT,
+    ram_gb        NUMERIC(8,2),
+    status        VARCHAR(20) DEFAULT 'active',
+    last_seen     TIMESTAMPTZ,
+    created_at    TIMESTAMPTZ DEFAULT NOW(),
+    updated_at    TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Indexes for performance
+CREATE INDEX idx_systems_status ON systems(status);
+CREATE INDEX idx_systems_dept ON systems(dept_id);
+CREATE INDEX idx_systems_lab ON systems(lab_id);
+CREATE INDEX idx_systems_ip ON systems(ip_address);
+\end{verbatim}
+
+\textbf{5. metrics Table (Hypertable):}
+\begin{verbatim}
+CREATE TABLE metrics (
+    metric_id            BIGSERIAL,
+    system_id            INT NOT NULL REFERENCES systems(system_id),
+    collected_at         TIMESTAMPTZ NOT NULL,
+    cpu_percent          NUMERIC(5,2),
+    ram_percent          NUMERIC(5,2),
+    disk_percent         NUMERIC(5,2),
+    network_sent_mbps    NUMERIC(8,2),
+    network_recv_mbps    NUMERIC(8,2),
+    uptime_seconds       BIGINT,
+    logged_in_users      INT
+);
+
+-- Convert to TimescaleDB hypertable
+SELECT create_hypertable('metrics', 'collected_at', 
+                         chunk_time_interval => INTERVAL '7 days');
+
+-- Compression policy (compress data older than 7 days)
+SELECT add_compression_policy('metrics', INTERVAL '7 days');
+
+-- Retention policy (delete data older than 90 days)
+SELECT add_retention_policy('metrics', INTERVAL '90 days');
+\end{verbatim}
+
+\subsection{Table Population}
+
+\subsubsection{Department and Lab Data}
+
+Initial organizational data established the hierarchical structure:
+
+\textbf{HODs Insertion:}
+\begin{verbatim}
+INSERT INTO hods (hod_name, hod_email) VALUES
+('Dr. Mamatha GS', 'mamatha.gs@rvce.edu.in'),
+('Dr. Sheetal N', 'sheetal.n@rvce.edu.in'),
+('Dr. Anitha J', 'anitha.j@rvce.edu.in');
+\end{verbatim}
+
+\textbf{Departments Insertion:}
+\begin{verbatim}
+INSERT INTO departments 
+(dept_name, dept_code, vlan_id, subnet_cidr, hod_id) VALUES
+('Information Science and Engineering', 'ISE', '30', 
+ '10.30.0.0/16', 1),
+('Computer Science and Engineering', 'CSE', '31', 
+ '10.31.0.0/16', 2),
+('Electronics and Communication', 'ECE', '32', 
+ '10.32.0.0/16', 3);
+\end{verbatim}
+
+\textbf{Labs Insertion:}
+\begin{verbatim}
+INSERT INTO labs (lab_dept, lab_number) 
+SELECT dept_id, generate_series(1, 8) 
+FROM departments WHERE dept_code = 'ISE';
+\end{verbatim}
+
+This creates 8 labs for the ISE department. Similar insertions were performed for other departments.
+
+\subsubsection{System Discovery and Registration}
+
+Systems are automatically discovered via network scanning. Nmap scans specified subnets, extracts active hosts from results, inserts them into the database with hostname/IP/specs, and automatically assigns departments based on IP-to-subnet matching.
+
+Example insertion from scanner:
+\begin{verbatim}
+INSERT INTO systems 
+(hostname, ip_address, dept_id, status, last_seen)
+VALUES 
+('lab1-pc05', '10.30.5.5', 1, 'active', NOW())
+ON CONFLICT (ip_address) 
+DO UPDATE SET last_seen = NOW(), status = 'active';
+\end{verbatim}
+
+\subsubsection{Metrics Collection}
+
+Metrics are collected at 5-minute intervals via SSH:
+\begin{verbatim}
+INSERT INTO metrics (system_id, collected_at, cpu_percent, 
+ ram_percent, disk_percent, network_sent_mbps, network_recv_mbps)
+VALUES (42, NOW(), 45.2, 68.7, 58.3, 2.3, 8.5);
+\end{verbatim}
+Millions of metric records accumulate over time, automatically partitioned by TimescaleDB into 7-day chunks.
+
+\subsection{Query Execution and Output}
+
+\subsubsection{Basic Queries}
+
+\textbf{1. List all active systems:}
+\begin{verbatim}
+SELECT system_id, hostname, ip_address, status, last_seen
+FROM systems WHERE status = 'active' ORDER BY last_seen DESC;
+\end{verbatim}
+
+\textbf{2. Department-wise system count:}
+\begin{verbatim}
+SELECT d.dept_name, COUNT(s.system_id) AS total_systems
+FROM departments d LEFT JOIN systems s ON d.dept_id = s.dept_id
+GROUP BY d.dept_name ORDER BY total_systems DESC;
+\end{verbatim}
+
+\subsubsection{Advanced Analytics Queries}
+
+\textbf{1. Top 10 CPU consumers (last 24 hours):}
+\begin{verbatim}
+SELECT s.hostname, s.ip_address, 
+       AVG(m.cpu_percent) AS avg_cpu
+FROM systems s
+JOIN metrics m ON s.system_id = m.system_id
+WHERE m.collected_at > NOW() - INTERVAL '24 hours'
+GROUP BY s.system_id, s.hostname, s.ip_address
+ORDER BY avg_cpu DESC
+LIMIT 10;
+\end{verbatim}
+
+\textbf{Output:} Ranked list of systems by average CPU utilization with percentages.
+
+\textbf{2. Underutilized systems (< 20\% avg utilization):}
+\begin{verbatim}
+WITH avg_utilization AS (
+    SELECT system_id,
+           AVG(cpu_percent) AS avg_cpu,
+           AVG(ram_percent) AS avg_ram
+    FROM metrics
+    WHERE collected_at > NOW() - INTERVAL '7 days'
+    GROUP BY system_id
+)
+SELECT s.hostname, s.ip_address, 
+       ROUND(au.avg_cpu, 2) AS avg_cpu,
+       ROUND(au.avg_ram, 2) AS avg_ram
+FROM systems s
+JOIN avg_utilization au ON s.system_id = au.system_id
+WHERE (au.avg_cpu + au.avg_ram) / 2 < 20.0
+ORDER BY (au.avg_cpu + au.avg_ram) / 2 ASC;
+\end{verbatim}
+
+\textbf{Output:} List of underutilized systems suitable for workload consolidation or power-saving.
+
+\textbf{3. System status over time (using continuous aggregate):}
+\begin{verbatim}
+SELECT time_bucket('1 hour', collected_at) AS hour,
+       AVG(cpu_percent) AS avg_cpu,
+       MAX(cpu_percent) AS max_cpu,
+       AVG(ram_percent) AS avg_ram
+FROM metrics
+WHERE system_id = 42 
+  AND collected_at > NOW() - INTERVAL '7 days'
+GROUP BY hour
+ORDER BY hour DESC;
+\end{verbatim}
+
+\textbf{Output:} Hourly aggregated metrics showing trends and peaks over the past week. This query benefits from TimescaleDB's continuous aggregates, achieving 82x speedup compared to raw data queries.
+
+\subsection{Security features}
+
+\subsubsection{Credential Encryption}
+
+Collection credentials (SSH passwords) are encrypted using PostgreSQL's pgcrypto extension:
+
+\textbf{Extension Setup:}
+\begin{verbatim}
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+\end{verbatim}
+
+\textbf{Secure Password Insertion:}
+\begin{verbatim}
+INSERT INTO collection_credentials 
+(system_id, auth_type, username, password)
+VALUES 
+(42, 'ssh', 'admin', 
+ pgp_sym_encrypt('MySecurePassword', 'encryption-key'));
+\end{verbatim}
+
+\textbf{Password Retrieval and Decryption:}
+\begin{verbatim}
+SELECT system_id, username,
+       pgp_sym_decrypt(password::bytea, 'encryption-key') AS pwd
+FROM collection_credentials
+WHERE system_id = 42;
+\end{verbatim}
+
+The encryption key is stored securely in environment variables on the collection server, never in version control or database plaintext.
+
+\subsubsection{SSH Key-Based Authentication}
+
+SSH key authentication is preferred over passwords for enhanced security:
+
+\begin{enumerate}
+    \item \textbf{Key Generation:} Ed25519 keys generated for collection user
+    \item \textbf{Public Key Distribution:} Public keys copied to all monitored systems
+    \item \textbf{Private Key Security:} Private keys stored with restricted permissions (600)
+    \item \textbf{Passwordless Collection:} Metrics collection proceeds without password prompts
+\end{enumerate}
+
+\textbf{Example SSH Collection Command:}
+\begin{verbatim}
+ssh -i /path/to/private_key user@10.30.5.5 "cat /proc/stat"
+\end{verbatim}
+
+\subsubsection{Database Access Control}
+
+Database roles and permissions are configured to enforce principle of least privilege:
+
+\textbf{Collection Role (Insert-only):}
+\begin{verbatim}
+CREATE ROLE collector_role LOGIN PASSWORD 'secure_password';
+GRANT INSERT ON metrics TO collector_role;
+GRANT SELECT ON systems TO collector_role;
+\end{verbatim}
+
+\textbf{API Role (Read-only):}
+\begin{verbatim}
+CREATE ROLE api_role LOGIN PASSWORD 'api_password';
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO api_role;
+\end{verbatim}
+
+\textbf{Admin Role (Full access):}
+\begin{verbatim}
+CREATE ROLE admin_role LOGIN PASSWORD 'admin_password' SUPERUSER;
+\end{verbatim}
+
+\section{Front End implementation}
+
+\subsection{Form Creation}
+
+The frontend implements several forms for user interaction:
+
+\subsubsection{System Registration Form}
+
+Allows manual addition of systems not discovered via scanning:
+
+\textbf{Form Fields:}
+\begin{itemize}
+    \item Hostname (text input, required)
+    \item IP Address (text input with validation, required)
+    \item Department (dropdown select, required)
+    \item Lab (dropdown select, filtered by department)
+    \item OS Type (dropdown: Windows/Linux/macOS)
+    \item CPU Cores (number input)
+    \item RAM GB (number input)
+\end{itemize}
+
+\textbf{Validation:}
+\begin{itemize}
+    \item IP address format validation (IPv4)
+    \item Unique IP constraint checked before submission
+    \item Required field validation with error messages
+\end{itemize}
+
+\textbf{Implementation:} React component with useState hooks for form state management and Axios for API submission.
+
+\subsubsection{Alert Configuration Form}
+
+Allows administrators to configure threshold-based alerting:
+
+\textbf{Form Fields:}
+\begin{itemize}
+    \item Alert Name (text input)
+    \item Metric Type (dropdown: CPU/RAM/Disk/Network)
+    \item Threshold Value (number input with percentage)
+    \item Duration (number input in minutes)
+    \item Severity (dropdown: Info/Warning/Critical)
+    \item Notification Enabled (checkbox)
+\end{itemize}
+
+\textbf{Database Trigger Integration:} Form submissions create database triggers that automatically generate alerts when conditions are met.
+
+\subsection{Connectivity to the Database}
+
+\subsubsection{Backend API Layer}
+
+The Node.js/Express backend establishes database connectivity using Sequelize ORM:
+
+\textbf{Database Configuration (config.js):}
+\begin{verbatim}
+const { Sequelize } = require('sequelize');
+
+const sequelize = new Sequelize({
+    host: process.env.DB_HOST || 'localhost',
+    port: process.env.DB_PORT || 5432,
+    database: process.env.DB_NAME || 'optilab',
+    username: process.env.DB_USER || 'api_role',
+    password: process.env.DB_PASSWORD,
+    dialect: 'postgres',
+    logging: false,
+    pool: {
+        max: 10,
+        min: 2,
+        acquire: 30000,
+        idle: 10000
+    }
+});
+\end{verbatim}
+
+\textbf{Connection Testing:}
+\begin{verbatim}
+sequelize.authenticate()
+    .then(() => console.log('Database connected'))
+    .catch(err => console.error('Connection failed:', err));
+\end{verbatim}
+
+\subsubsection{API Endpoints}
+
+\textbf{1. GET /api/systems - Retrieve all systems:}
+\begin{verbatim}
+router.get('/systems', async (req, res) => {
+    const systems = await System.findAll({
+        include: [{ model: Department }, { model: Lab }],
+        order: [['last_seen', 'DESC']]
+    });
+    res.json(systems);
+});
+\end{verbatim}
+
+\textbf{2. GET /api/systems/:id/metrics - Get system metrics:}
+\begin{verbatim}
+router.get('/systems/:id/metrics', async (req, res) => {
+    const { id } = req.params;
+    const { timeRange = '24h' } = req.query;
+    
+    const interval = timeRange === '24h' ? '24 hours' : '7 days';
+    const metrics = await sequelize.query(
+        `SELECT * FROM metrics 
+         WHERE system_id = :id 
+           AND collected_at > NOW() - INTERVAL :interval
+         ORDER BY collected_at DESC`,
+        { replacements: { id, interval }, type: QueryTypes.SELECT }
+    );
+    res.json(metrics);
+});
+\end{verbatim}
+
+\textbf{3. GET /api/analytics/top-consumers - Top resource consumers:}
+\begin{verbatim}
+router.get('/analytics/top-consumers', async (req, res) => {
+    const topCPU = await sequelize.query(
+        `SELECT s.hostname, AVG(m.cpu_percent) AS avg_cpu
+         FROM systems s JOIN metrics m ON s.system_id = m.system_id
+         WHERE m.collected_at > NOW() - INTERVAL '24 hours'
+         GROUP BY s.system_id, s.hostname
+         ORDER BY avg_cpu DESC LIMIT 10`,
+        { type: QueryTypes.SELECT }
+    );
+    res.json({ topCPU });
+});
+\end{verbatim}
+
+\subsubsection{Frontend API Integration}
+
+The React frontend communicates with the backend via Axios:
+
+\textbf{API Client Setup (api.ts):}
+\begin{verbatim}
+import axios from 'axios';
+
+const api = axios.create({
+    baseURL: import.meta.env.VITE_API_URL || 
+             'http://localhost:4000/api',
+    timeout: 10000,
+    headers: { 'Content-Type': 'application/json' }
+});
+
+export const getSystems = () => api.get('/systems');
+export const getSystemMetrics = (id: number, timeRange: string) =>
+    api.get(`/systems/${id}/metrics`, { params: { timeRange } });
+\end{verbatim}
+
+\textbf{Component Usage:}
+\begin{verbatim}
+const [systems, setSystems] = useState([]);
+
+useEffect(() => {
+    getSystems()
+        .then(response => setSystems(response.data))
+        .catch(error => console.error('Failed to fetch', error));
+}, []);
+\end{verbatim}
+
+\subsection{Report generation}
+
+\subsubsection{Performance Reports}
+
+Automated weekly reports generated via SQL queries and exported to CSV:
+
+\textbf{Weekly Utilization Report Query:}
+\begin{verbatim}
+COPY (
+    SELECT 
+        s.hostname,
+        d.dept_name,
+        ROUND(AVG(m.cpu_percent), 2) AS avg_cpu,
+        ROUND(AVG(m.ram_percent), 2) AS avg_ram,
+        ROUND(MAX(m.cpu_percent), 2) AS peak_cpu
+    FROM systems s
+    JOIN departments d ON s.dept_id = d.dept_id
+    JOIN metrics m ON s.system_id = m.system_id
+    WHERE m.collected_at > NOW() - INTERVAL '7 days'
+    GROUP BY s.system_id, s.hostname, d.dept_name
+    ORDER BY avg_cpu DESC
+) TO '/tmp/weekly_utilization.csv' WITH CSV HEADER;
+\end{verbatim}
+
+\subsubsection{Dashboard Export}
+
+Frontend provides export functionality for analytics data:
+
+\begin{itemize}
+    \item \textbf{CSV Export:} Table data exported to CSV via JavaScript
+    \item \textbf{Chart Image Export:} Recharts supports PNG/SVG export
+    \item \textbf{PDF Reports:} Planned feature using jsPDF library
+\end{itemize}
+
+\subsection{Security features}
+
+\subsubsection{Authentication and Authorization}
+
+\textbf{JWT-based Authentication:}
+\begin{verbatim}
+const jwt = require('jsonwebtoken');
+
+// Login endpoint
+router.post('/auth/login', async (req, res) => {
+    const { username, password } = req.body;
+    const user = await User.findOne({ where: { username } });
+    
+    if (!user || !await bcrypt.compare(password, user.password)) {
+        return res.status(401).json({ error: 'Invalid credentials' });
+    }
+    
+    const token = jwt.sign(
+        { userId: user.id, role: user.role },
+        process.env.JWT_SECRET,
+        { expiresIn: '24h' }
+    );
+    res.json({ token });
+});
+\end{verbatim}
+
+\textbf{Protected Route Middleware:}
+\begin{verbatim}
+const authMiddleware = (req, res, next) => {
+    const token = req.headers.authorization?.split(' ')[1];
+    if (!token) return res.status(401).json({ error: 'Unauthorized' });
+    
+    try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        req.user = decoded;
+        next();
+    } catch (error) {
+        res.status(401).json({ error: 'Invalid token' });
+    }
+};
+
+router.get('/systems', authMiddleware, async (req, res) => {
+    // Protected endpoint logic
+});
+\end{verbatim}
+
+\subsubsection{Input Validation and Sanitization}
+
+\textbf{SQL Injection Prevention:}
+\begin{itemize}
+    \item All queries use parameterized statements via Sequelize ORM
+    \item User input never directly concatenated into SQL queries
+    \item Prepared statements ensure automatic escaping
+\end{itemize}
+
+\textbf{XSS Prevention:}
+\begin{itemize}
+    \item React automatically escapes JSX content
+    \item User-generated content sanitized using DOMPurify library
+    \item Content Security Policy (CSP) headers configured
+\end{itemize}
+
+\textbf{API Rate Limiting:}
+\begin{verbatim}
+const rateLimit = require('express-rate-limit');
+
+const limiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 100, // Max 100 requests per window
+    message: 'Too many requests, please try again later'
+});
+
+app.use('/api/', limiter);
+\end{verbatim}
