@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Server, Cpu, HardDrive, Activity, Network, Wrench, Plus } from 'lucide-react'
+import { ArrowLeft, Server, Cpu, HardDrive, Activity, Network, Plus } from 'lucide-react'
 import { Line } from 'react-chartjs-2'
 import {
   Chart as ChartJS,
@@ -48,12 +48,18 @@ interface System {
 interface Metric {
   timestamp: string
   cpu_percent?: number
+  cpu_temperature?: number
   ram_percent?: number
   disk_percent?: number
+  disk_read_mbps?: number
+  disk_write_mbps?: number
   network_sent_mbps?: number
   network_recv_mbps?: number
-  gpu_percent?: number
   uptime_seconds?: number
+  logged_in_users?: number
+  gpu_percent?: number
+  gpu_memory_used_gb?: number
+  gpu_temperature?: number
 }
 
 export default function SystemDetail() {
@@ -89,12 +95,19 @@ export default function SystemDetail() {
   const fetchSystemData = async () => {
     try {
       setLoading(true)
-      const [systemRes, metricsRes] = await Promise.all([
-        api.get(`/departments/${deptId}/labs/${labId}/${systemId}`),
+      // First get all systems in the lab, then find the specific one
+      const [labSystemsRes, metricsRes] = await Promise.all([
+        api.get(`/departments/${deptId}/labs/${labId}/systems`),
         api.get(`/departments/${deptId}/labs/${labId}/${systemId}/metrics`, { params: { hours: 24, limit: 100 } })
       ])
       
-      setSystem(systemRes.data)
+      // Find the specific system from the lab's systems
+      const system = labSystemsRes.data.find((s: any) => s.system_id === parseInt(systemId || '0'))
+      if (!system) {
+        throw new Error('System not found')
+      }
+      
+      setSystem(system)
       setMetrics(metricsRes.data.reverse())
     } catch (error) {
       console.error('Failed to fetch system data:', error)
@@ -159,7 +172,18 @@ export default function SystemDetail() {
     scales: {
       y: {
         beginAtZero: true,
-        max: 100,
+        ticks: {
+          callback: (value: any) => value.toFixed(2)
+        }
+      }
+    }
+  }
+
+  const percentChartOptions = {
+    ...chartOptions,
+    scales: {
+      y: {
+        beginAtZero: true,
         ticks: {
           callback: (value: any) => value + '%'
         }
@@ -173,7 +197,19 @@ export default function SystemDetail() {
       y: {
         beginAtZero: true,
         ticks: {
-          callback: (value: any) => value + ' Mbps'
+          callback: (value: any) => value.toFixed(2) + ' Mbps'
+        }
+      }
+    }
+  }
+
+  const tempChartOptions = {
+    ...chartOptions,
+    scales: {
+      y: {
+        beginAtZero: true,
+        ticks: {
+          callback: (value: any) => value.toFixed(1) + '°C'
         }
       }
     }
@@ -270,6 +306,34 @@ export default function SystemDetail() {
           </div>
           <p className="text-2xl font-bold text-gray-900">{system.disk_total_gb || 'N/A'} GB</p>
         </div>
+
+        <div className="card p-6">
+          <div className="flex items-center space-x-3 mb-3">
+            <div className="w-10 h-10 bg-indigo-100 rounded-lg flex items-center justify-center">
+              <Server className="w-5 h-5 text-indigo-600" />
+            </div>
+            <span className="text-sm font-medium text-gray-600">Uptime</span>
+          </div>
+          <p className="text-2xl font-bold text-gray-900">
+            {metrics.length > 0 && metrics[metrics.length - 1]?.uptime_seconds !== null && metrics[metrics.length - 1]?.uptime_seconds !== undefined
+              ? `${Math.floor((metrics[metrics.length - 1]?.uptime_seconds ?? 0) / 3600)}h ${Math.floor(((metrics[metrics.length - 1]?.uptime_seconds ?? 0) % 3600) / 60)}m`
+              : 'N/A'}
+          </p>
+        </div>
+
+        <div className="card p-6">
+          <div className="flex items-center space-x-3 mb-3">
+            <div className="w-10 h-10 bg-cyan-100 rounded-lg flex items-center justify-center">
+              <Activity className="w-5 h-5 text-cyan-600" />
+            </div>
+            <span className="text-sm font-medium text-gray-600">Logged In Users</span>
+          </div>
+          <p className="text-2xl font-bold text-gray-900">
+            {metrics.length > 0 && metrics[metrics.length - 1].logged_in_users !== null && metrics[metrics.length - 1].logged_in_users !== undefined
+              ? metrics[metrics.length - 1].logged_in_users
+              : 'N/A'}
+          </p>
+        </div>
       </div>
 
       {/* Additional System Info */}
@@ -314,7 +378,18 @@ export default function SystemDetail() {
                 <h3 className="text-lg font-semibold text-gray-900">CPU Usage</h3>
               </div>
               <div className="h-64">
-                <Line data={prepareChartData('cpu_percent', 'CPU %', '#9333ea')} options={chartOptions} />
+                <Line data={prepareChartData('cpu_percent', 'CPU %', '#9333ea')} options={percentChartOptions} />
+              </div>
+            </div>
+
+            {/* CPU Temperature */}
+            <div className="card p-6">
+              <div className="flex items-center space-x-2 mb-4">
+                <Cpu className="w-5 h-5 text-red-600" />
+                <h3 className="text-lg font-semibold text-gray-900">CPU Temperature</h3>
+              </div>
+              <div className="h-64">
+                <Line data={prepareChartData('cpu_temperature', 'Temperature °C', '#dc2626')} options={tempChartOptions} />
               </div>
             </div>
 
@@ -325,7 +400,7 @@ export default function SystemDetail() {
                 <h3 className="text-lg font-semibold text-gray-900">RAM Usage</h3>
               </div>
               <div className="h-64">
-                <Line data={prepareChartData('ram_percent', 'RAM %', '#16a34a')} options={chartOptions} />
+                <Line data={prepareChartData('ram_percent', 'RAM %', '#16a34a')} options={percentChartOptions} />
               </div>
             </div>
 
@@ -336,7 +411,43 @@ export default function SystemDetail() {
                 <h3 className="text-lg font-semibold text-gray-900">Disk Usage</h3>
               </div>
               <div className="h-64">
-                <Line data={prepareChartData('disk_percent', 'Disk %', '#ea580c')} options={chartOptions} />
+                <Line data={prepareChartData('disk_percent', 'Disk %', '#ea580c')} options={percentChartOptions} />
+              </div>
+            </div>
+
+            {/* Disk I/O */}
+            <div className="card p-6">
+              <div className="flex items-center space-x-2 mb-4">
+                <HardDrive className="w-5 h-5 text-teal-600" />
+                <h3 className="text-lg font-semibold text-gray-900">Disk I/O</h3>
+              </div>
+              <div className="h-64">
+                <Line 
+                  data={{
+                    labels: metrics.map(m => new Date(m.timestamp).toLocaleTimeString()),
+                    datasets: [
+                      {
+                        label: 'Read',
+                        data: metrics.map(m => m.disk_read_mbps || 0),
+                        borderColor: '#0d9488',
+                        backgroundColor: '#0d948820',
+                        fill: true,
+                        tension: 0.4,
+                        pointRadius: 2,
+                      },
+                      {
+                        label: 'Write',
+                        data: metrics.map(m => m.disk_write_mbps || 0),
+                        borderColor: '#d97706',
+                        backgroundColor: '#d9770620',
+                        fill: true,
+                        tension: 0.4,
+                        pointRadius: 2,
+                      }
+                    ]
+                  }}
+                  options={networkChartOptions}
+                />
               </div>
             </div>
 
@@ -375,6 +486,58 @@ export default function SystemDetail() {
                 />
               </div>
             </div>
+
+            {/* GPU Usage (if available) */}
+            {metrics.some(m => m.gpu_percent !== null && m.gpu_percent !== undefined) && (
+              <div className="card p-6">
+                <div className="flex items-center space-x-2 mb-4">
+                  <Activity className="w-5 h-5 text-pink-600" />
+                  <h3 className="text-lg font-semibold text-gray-900">GPU Usage</h3>
+                </div>
+                <div className="h-64">
+                  <Line data={prepareChartData('gpu_percent', 'GPU %', '#ec4899')} options={percentChartOptions} />
+                </div>
+              </div>
+            )}
+
+            {/* GPU Memory (if available) */}
+            {metrics.some(m => m.gpu_memory_used_gb !== null && m.gpu_memory_used_gb !== undefined) && (
+              <div className="card p-6">
+                <div className="flex items-center space-x-2 mb-4">
+                  <Activity className="w-5 h-5 text-rose-600" />
+                  <h3 className="text-lg font-semibold text-gray-900">GPU Memory</h3>
+                </div>
+                <div className="h-64">
+                  <Line 
+                    data={prepareChartData('gpu_memory_used_gb', 'Memory GB', '#f43f5e')} 
+                    options={{
+                      ...chartOptions,
+                      scales: {
+                        y: {
+                          beginAtZero: true,
+                          ticks: {
+                            callback: (value: any) => value.toFixed(2) + ' GB'
+                          }
+                        }
+                      }
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* GPU Temperature (if available) */}
+            {metrics.some(m => m.gpu_temperature !== null && m.gpu_temperature !== undefined) && (
+              <div className="card p-6">
+                <div className="flex items-center space-x-2 mb-4">
+                  <Activity className="w-5 h-5 text-orange-600" />
+                  <h3 className="text-lg font-semibold text-gray-900">GPU Temperature</h3>
+                </div>
+                <div className="h-64">
+                  <Line data={prepareChartData('gpu_temperature', 'Temperature °C', '#f97316')} options={tempChartOptions} />
+                </div>
+              </div>
+            )}
           </div>
         </>
       ) : (

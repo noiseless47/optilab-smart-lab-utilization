@@ -1,0 +1,453 @@
+\chapter{DESIGN}
+
+This chapter presents the detailed design of OptiLab, including the Entity-Relationship diagram, database schema representation, normalization process, and frontend design considerations.
+
+\section{E-R Diagram}
+
+The Entity-Relationship (ER) diagram represents the logical data model of the OptiLab system, showing entities, their attributes, and relationships between them. The ER diagram illustrates the complete database structure with all tables and their interconnections.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.9\textwidth]{optilabs_er_diagram.jpeg}
+\caption{Entity-Relationship Diagram of OptiLab Database}
+\label{fig:er-diagram}
+\end{figure}
+
+\textbf{Key Entities and Relationships:}
+
+\begin{itemize}
+    \item \textbf{HODs} - Represents Head of Department information
+    \item \textbf{Departments} - Central organizational unit with network configuration (VLAN, subnet)
+    \item \textbf{Labs} - Physical laboratory spaces within departments
+    \item \textbf{Systems} - Individual computer systems in labs
+    \item \textbf{Metrics} - Time-series performance data collected from systems
+    \item \textbf{Network Scans} - Records of network discovery operations
+    \item \textbf{Collection Credentials} - Encrypted authentication credentials for remote access
+    \item \textbf{Alerts} - System-generated alerts based on threshold violations
+\end{itemize}
+
+\textbf{Primary Relationships:} The database implements a hierarchical structure where HODs manage multiple Departments (1:M), Departments contain multiple Labs and Systems (1:M), Labs house multiple Systems (1:M), and Systems generate time-series Metrics and Alerts (1:M). Each System has one set of Collection Credentials (1:1), and Departments track multiple Network Scan operations (1:M).
+
+\subsection{Schema Representation}
+
+The database schema represents the physical implementation using PostgreSQL 18 with TimescaleDB extension for optimized time-series data handling.
+
+\subsubsection{hods Table}
+
+\textbf{Schema:}
+\begin{verbatim}
+CREATE TABLE hods (
+    hod_id       SERIAL PRIMARY KEY,
+    hod_name     VARCHAR(200) NOT NULL,
+    hod_email    VARCHAR(220) UNIQUE,
+    created_at   TIMESTAMPTZ DEFAULT NOW()
+);
+\end{verbatim}
+
+\textbf{Purpose:} Stores Head of Department information for organizational hierarchy and access control.
+
+\subsubsection{departments Table}
+
+\textbf{Schema:}
+\begin{verbatim}
+CREATE TABLE departments (
+    dept_id      SERIAL PRIMARY KEY,
+    dept_name    VARCHAR(100) NOT NULL UNIQUE,
+    dept_code    VARCHAR(20),
+    vlan_id      VARCHAR(20),
+    subnet_cidr  CIDR,
+    description  TEXT,
+    hod_id       INT REFERENCES hods(hod_id),
+    created_at   TIMESTAMPTZ DEFAULT NOW()
+);
+\end{verbatim}
+
+\textbf{Purpose:} Central organizational unit containing network configuration (VLAN, subnet) for automatic system-to-department mapping during discovery.
+
+\textbf{Key Fields:}
+\begin{itemize}
+    \item \textbf{subnet\_cidr:} Network range in CIDR notation (e.g., 10.30.0.0/16)
+    \item \textbf{vlan\_id:} VLAN identifier for network segmentation
+\end{itemize}
+
+\subsubsection{labs Table}
+
+\textbf{Schema:}
+\begin{verbatim}
+CREATE TABLE labs (
+    lab_id        SERIAL PRIMARY KEY,
+    lab_dept      INT REFERENCES departments(dept_id) 
+                  ON DELETE CASCADE,
+    lab_number    INT NOT NULL,
+    assistant_ids INT[],
+    created_at    TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(lab_dept, lab_number)
+);
+\end{verbatim}
+
+\textbf{Purpose:} Represents physical laboratory spaces within departments. Each lab belongs to exactly one department.
+
+\subsubsection{systems Table}
+
+\textbf{Schema:}
+\begin{verbatim}
+CREATE TABLE systems (
+    system_id     SERIAL PRIMARY KEY,
+    system_number INT,
+    lab_id        INT REFERENCES labs(lab_id) ON DELETE SET NULL,
+    dept_id       INT REFERENCES departments(dept_id),
+    hostname      VARCHAR(255) NOT NULL,
+    ip_address    INET NOT NULL UNIQUE,
+    mac_address   MACADDR,
+    os_type       VARCHAR(50),
+    os_version    VARCHAR(200),
+    cpu_cores     INT,
+    ram_gb        NUMERIC(8,2),
+    status        VARCHAR(20) DEFAULT 'active',
+    last_seen     TIMESTAMPTZ,
+    created_at    TIMESTAMPTZ DEFAULT NOW(),
+    updated_at    TIMESTAMPTZ DEFAULT NOW()
+);
+\end{verbatim}
+
+\textbf{Purpose:} Core table storing individual computer system information discovered through network scanning.
+
+\textbf{Indexes for Performance:}
+\begin{verbatim}
+CREATE INDEX idx_systems_status ON systems(status);
+CREATE INDEX idx_systems_dept ON systems(dept_id);
+CREATE INDEX idx_systems_lab ON systems(lab_id);
+CREATE INDEX idx_systems_ip ON systems(ip_address);
+\end{verbatim}
+
+\subsubsection{metrics Table (TimescaleDB Hypertable)}
+
+\textbf{Schema:}
+\begin{verbatim}
+CREATE TABLE metrics (
+    metric_id            BIGSERIAL,
+    system_id            INT NOT NULL REFERENCES systems(system_id),
+    collected_at         TIMESTAMPTZ NOT NULL,
+    cpu_percent          NUMERIC(5,2),
+    cpu_temp             NUMERIC(5,2),
+    ram_percent          NUMERIC(5,2),
+    ram_used_gb          NUMERIC(8,2),
+    ram_total_gb         NUMERIC(8,2),
+    disk_percent         NUMERIC(5,2),
+    disk_read_mbps       NUMERIC(8,2),
+    disk_write_mbps      NUMERIC(8,2),
+    network_sent_mbps    NUMERIC(8,2),
+    network_recv_mbps    NUMERIC(8,2),
+    gpu_percent          NUMERIC(5,2),
+    gpu_memory_percent   NUMERIC(5,2),
+    gpu_temp             NUMERIC(5,2),
+    uptime_seconds       BIGINT,
+    logged_in_users      INT
+);
+
+-- Convert to TimescaleDB hypertable
+SELECT create_hypertable('metrics', 'collected_at', 
+                         chunk_time_interval => INTERVAL '7 days');
+\end{verbatim}
+
+\textbf{Purpose:} Critical time-series table storing all performance metrics. TimescaleDB hypertable provides automatic time-based partitioning (7-day chunks), compression (90\% space reduction after 7 days), and retention policies (automatic deletion after 90 days).
+
+\subsubsection{network\_scans Table}
+
+\textbf{Schema:}
+\begin{verbatim}
+CREATE TABLE network_scans (
+    scan_id          SERIAL PRIMARY KEY,
+    dept_id          INT REFERENCES departments(dept_id),
+    scan_type        VARCHAR(50) NOT NULL,
+    target_range     VARCHAR(100) NOT NULL,
+    scan_start       TIMESTAMPTZ NOT NULL,
+    scan_end         TIMESTAMPTZ,
+    duration_seconds INT GENERATED ALWAYS AS 
+                     (EXTRACT(EPOCH FROM scan_end - scan_start)::INT) 
+                     STORED,
+    systems_found    INT DEFAULT 0,
+    status           VARCHAR(20) DEFAULT 'running',
+    error_message    TEXT,
+    scan_parameters  JSONB,
+    created_at       TIMESTAMPTZ DEFAULT NOW()
+);
+\end{verbatim}
+
+\textbf{Purpose:} Tracks network scanning operations, their progress, and results for audit and troubleshooting.
+
+\subsubsection{collection\_credentials Table}
+
+\textbf{Schema:}
+\begin{verbatim}
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+CREATE TABLE collection_credentials (
+    cred_id       SERIAL PRIMARY KEY,
+    system_id     INT UNIQUE REFERENCES systems(system_id) 
+                  ON DELETE CASCADE,
+    auth_type     VARCHAR(20) NOT NULL,
+    username      VARCHAR(100) NOT NULL,
+    password      BYTEA,  -- Encrypted using pgcrypto
+    ssh_key_path  VARCHAR(500),
+    created_at    TIMESTAMPTZ DEFAULT NOW(),
+    updated_at    TIMESTAMPTZ DEFAULT NOW()
+);
+\end{verbatim}
+
+\textbf{Purpose:} Stores encrypted authentication credentials for agentless SSH/WMI collection. Passwords use AES-256 encryption via pgcrypto extension, with SSH key authentication preferred. Access restricted to collection scripts with limited database privileges.
+
+\section{Normalization}
+
+The database schema undergoes normalization to eliminate redundancy, ensure data integrity, and optimize query performance.
+
+\subsection{First Normal Form (1NF)}
+
+\textbf{Requirement:} All attributes must contain atomic values, and each record must be unique.
+
+\textbf{Application:}
+\begin{itemize}
+    \item All tables have primary keys ensuring unique record identification
+    \item Composite attributes are decomposed (e.g., ram\_used\_gb and ram\_total\_gb instead of single "ram" field)
+    \item Array type in \texttt{labs.assistant\_ids} is PostgreSQL-specific and acceptable for administrative lists
+\end{itemize}
+
+\subsection{Second Normal Form (2NF)}
+
+\textbf{Requirement:} Must be in 1NF, and all non-key attributes must depend on the entire primary key.
+
+\textbf{Application:}
+\begin{itemize}
+    \item \texttt{systems} table: All attributes (hostname, IP, specs) depend entirely on \texttt{system\_id}
+    \item \texttt{metrics} table: All metric values depend on the composite of (\texttt{system\_id}, \texttt{collected\_at})
+    \item \texttt{departments} table: Department attributes depend solely on \texttt{dept\_id}
+\end{itemize}
+
+\subsection{Third Normal Form (3NF)}
+
+\textbf{Requirement:} Must be in 2NF, and no transitive dependencies exist (non-key attributes must not depend on other non-key attributes).
+
+\textbf{Application:}
+\begin{itemize}
+    \item HOD information extracted to separate \texttt{hods} table to eliminate transitive dependency
+    \item Department information referenced in \texttt{labs} and \texttt{systems} via foreign keys, not duplicated
+    \item Lab information referenced in \texttt{systems} via \texttt{lab\_id} foreign key
+\end{itemize}
+
+\subsection{Schema after Normalization}
+
+The final normalized schema consists of eight core tables, all compliant with 1NF, 2NF, and 3NF:
+
+\begin{itemize}
+    \item \textbf{hods} (Primary Key: hod\_id)
+    \item \textbf{departments} (Primary Key: dept\_id, Foreign Key: hod\_id → hods)
+    \item \textbf{labs} (Primary Key: lab\_id, Foreign Key: lab\_dept → departments)
+    \item \textbf{systems} (Primary Key: system\_id, Foreign Keys: dept\_id, lab\_id)
+    \item \textbf{metrics (Hypertable)} (Primary Key: metric\_id, Foreign Key: system\_id)
+    \item \textbf{network\_scans} (Primary Key: scan\_id, Foreign Key: dept\_id)
+    \item \textbf{collection\_credentials} (Primary Key: cred\_id, Foreign Key: system\_id)
+    \item \textbf{alerts} (Primary Key: alert\_id, Foreign Key: system\_id)
+\end{itemize}
+
+All tables eliminate redundancy, maintain referential integrity through foreign key constraints, and ensure that non-key attributes depend solely on primary keys with no transitive dependencies. The \textbf{alerts} table structure:
+    \begin{itemize}
+        \item Primary Key: alert\_id
+        \item Foreign Key: system\_id → systems(system\_id)
+        \item Stores threshold-based alerts
+    \end{itemize}
+\end{enumerate}
+
+\textbf{Benefits of Normalization:}
+\begin{itemize}
+    \item Eliminates data redundancy and update anomalies
+    \item Ensures referential integrity through foreign key constraints
+    \item Simplifies maintenance and reduces storage requirements
+    \item Enables efficient querying with proper indexes
+\end{itemize}
+
+\section{Front End Design}
+
+The frontend of OptiLab is designed as a modern, responsive single-page application (SPA) providing intuitive visualization and interaction with the monitoring system.
+
+\subsection{Technology Stack}
+
+\begin{itemize}
+    \item \textbf{Framework:} React 18.2 with TypeScript for type safety
+    \item \textbf{Build Tool:} Vite 5.0 for fast development and optimized production builds
+    \item \textbf{Styling:} Tailwind CSS 3.3 for utility-first responsive design
+    \item \textbf{Routing:} React Router DOM 6.20 for client-side navigation
+    \item \textbf{Charts:} Recharts 2.10 for interactive data visualization
+    \item \textbf{HTTP Client:} Axios 1.6 for API communication
+    \item \textbf{State Management:} React Hooks (useState, useEffect) for local state
+\end{itemize}
+
+\subsection{User Interface Components}
+
+\subsubsection{Dashboard Page}
+
+\textbf{Purpose:} Provides an at-a-glance overview of all monitored systems across departments.
+
+\textbf{Components:}
+\begin{itemize}
+    \item \textbf{Hero Section:} Project title and quick action buttons
+    \item \textbf{Statistics Cards:} Display total systems, active systems, offline systems, and department count
+    \item \textbf{Recent Systems Table:} Tabular view of systems with hostname, IP, department, lab, status, and last seen timestamp
+    \item \textbf{Quick Metrics:} Average CPU and RAM utilization across all systems
+\end{itemize}
+
+\textbf{Features:}
+\begin{itemize}
+    \item Color-coded status indicators (green for active, red for offline)
+    \item Real-time updates every 60 seconds
+    \item Clickable rows navigate to system detail pages
+    \item Responsive grid layout adapting to screen size
+\end{itemize}
+
+\subsubsection{System Detail Page}
+
+\textbf{Purpose:} Displays comprehensive information and metrics history for an individual system.
+
+\textbf{Components:}
+\begin{itemize}
+    \item \textbf{System Information Header:} Hostname, IP, department, lab, status, last seen
+    \item \textbf{Hardware Specifications:} CPU cores, RAM capacity, OS type and version, uptime
+    \item \textbf{Real-time Metrics:} Current CPU, RAM, disk, and network utilization with gauge visualizations
+    \item \textbf{Historical Charts:} Line charts showing 24-hour trends for CPU, RAM, disk I/O, and network throughput
+    \item \textbf{Performance Analysis:} Bottleneck detection (CPU-bound, RAM-bound, balanced)
+\end{itemize}
+
+\textbf{Features:}
+\begin{itemize}
+    \item Interactive charts with hover tooltips
+    \item Time range selection (24h, 7d, 30d)
+    \item Export data functionality
+\end{itemize}
+
+\subsubsection{Department View Page}
+
+\textbf{Purpose:} Provides department-level aggregated view of systems and labs.
+
+\textbf{Components:}
+\begin{itemize}
+    \item \textbf{Department Header:} Name, code, VLAN, subnet, HOD information
+    \item \textbf{Department Statistics:} Total labs, total systems, active systems, average CPU/RAM
+    \item \textbf{Labs Grid:} Card-based layout showing each lab with system count and utilization
+    \item \textbf{Department Trends:} 7-day utilization trend chart
+\end{itemize}
+
+\textbf{Features:}
+\begin{itemize}
+    \item Hierarchical navigation: Department → Lab → System
+    \item Color-coded health indicators for labs
+    \item Quick links to lab detail pages
+\end{itemize}
+
+\subsubsection{Analytics Dashboard Page}
+
+\textbf{Purpose:} Provides advanced analytics and optimization recommendations.
+
+\textbf{Components:}
+\begin{itemize}
+    \item \textbf{Top Resource Consumers:} Bar charts showing top 10 CPU, RAM, and network consumers
+    \item \textbf{Underutilized Systems:} Table of systems with < 20\% average utilization
+    \item \textbf{Performance Distribution:} Pie chart categorizing systems as balanced, CPU-bound, RAM-bound, or disk-bound
+    \item \textbf{Utilization Trends:} Multi-line chart showing 30-day trends across all systems
+    \item \textbf{Department Comparison:} Grouped bar chart comparing average metrics across departments
+    \item \textbf{Recommendations Panel:} Priority-ranked list of optimization actions
+\end{itemize}
+
+\textbf{Features:}
+\begin{itemize}
+    \item All charts interactive with tooltips and zooming
+    \item Filter systems by category
+    \item Export reports to PDF/CSV
+\end{itemize}
+
+\subsubsection{Alerts View Page}
+
+\textbf{Purpose:} Displays active alerts and alert management interface.
+
+\textbf{Components:}
+\begin{itemize}
+    \item \textbf{Alert Summary Cards:} Count of critical, warning, and info alerts
+    \item \textbf{Active Alerts Table:} Severity, system, alert type, threshold, current value, duration
+    \item \textbf{Alert Details:} Expanded view with historical context and suggested actions
+    \item \textbf{Alert Timeline:} Visual timeline of alert history
+    \item \textbf{Alert Configuration:} Settings for threshold adjustment and notification preferences
+\end{itemize}
+
+\textbf{Features:}
+\begin{itemize}
+    \item Real-time updates every 30 seconds
+    \item Acknowledge and snooze functionality
+    \item Sound/desktop notifications for critical alerts
+    \item Color-coded severity levels
+\end{itemize}
+
+\subsection{Design Principles}
+
+\subsubsection{Responsive Design}
+
+All interface components are designed to be fully responsive across devices:
+
+\begin{itemize}
+    \item \textbf{Desktop (≥1024px):} Multi-column grid layouts, expanded navigation, full feature set
+    \item \textbf{Tablet (768px-1023px):} Adaptive grid with column reduction, compact navigation
+    \item \textbf{Mobile (≤767px):} Single-column stack layout, hamburger menu, touch-optimized controls
+\end{itemize}
+
+\subsubsection{User Experience}
+
+\begin{itemize}
+    \item \textbf{Intuitive Navigation:} Hierarchical structure matching organizational model
+    \item \textbf{Visual Feedback:} Loading states, success/error messages, hover effects
+    \item \textbf{Consistent Design Language:} Unified color scheme, typography, and spacing
+    \item \textbf{Accessibility:} ARIA labels, keyboard navigation support, adequate color contrast
+\end{itemize}
+
+\subsubsection{Performance Optimization}
+
+\begin{itemize}
+    \item \textbf{Code Splitting:} Route-based lazy loading to reduce initial bundle size
+    \item \textbf{Memoization:} React.memo and useMemo to prevent unnecessary re-renders
+    \item \textbf{Debouncing:} Search inputs and filter controls debounced to reduce API calls
+    \item \textbf{Pagination:} Large data sets paginated to maintain responsiveness
+\end{itemize}
+
+\subsection{Architecture Diagram}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.9\textwidth]{optilabs_architecture_diagram.jpeg}
+\caption{OptiLab System Architecture Overview}
+\label{fig:architecture}
+\end{figure}
+
+\textbf{Architecture Layers:}
+
+\begin{enumerate}
+    \item \textbf{Presentation Layer:} React web application providing user interface
+    \item \textbf{Application Layer:} Node.js REST API handling business logic
+    \item \textbf{Data Layer:} PostgreSQL with TimescaleDB for time-series data storage
+    \item \textbf{Collection Layer:} Bash/Python scripts for agentless metrics collection via SSH/WMI
+\end{enumerate}
+
+\subsection{Data Flow Visualization}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.9\textwidth]{optilabs_dfd_level_1.png}
+\caption{OptiLab Data Flow Diagram}
+\label{fig:dataflow}
+\end{figure}
+
+\textbf{Data Flow Steps:}
+
+\begin{enumerate}
+    \item \textbf{Discovery:} Network scanner identifies systems and registers in database
+    \item \textbf{Collection:} Metrics collector retrieves performance data via SSH/WMI
+    \item \textbf{Storage:} Metrics inserted into TimescaleDB hypertable
+    \item \textbf{Aggregation:} Continuous aggregates compute hourly/daily summaries
+    \item \textbf{Query:} Frontend requests data via REST API
+    \item \textbf{Visualization:} Charts and tables render metrics for users
+\end{enumerate}

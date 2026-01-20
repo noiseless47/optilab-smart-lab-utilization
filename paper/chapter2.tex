@@ -1,0 +1,261 @@
+\chapter{REQUIREMENT SPECIFICATION}
+
+This chapter outlines the comprehensive requirements for OptiLab: Smart Lab Resource Monitoring System. It details both functional and non-functional requirements, along with the necessary hardware and software specifications for successful system deployment and operation.
+
+\section{Specific Requirements}
+
+\subsection{Functional Requirements}
+
+Functional requirements define what the system must do to meet user needs and business objectives:
+
+\begin{enumerate}
+    \item \textbf{System Discovery and Registration}
+    \begin{itemize}
+        \item The system shall automatically discover all devices within specified IP ranges using network scanning
+        \item The system shall support VLAN-based organization (ISE=30, CSE=31, ECE=32)
+        \item The system shall extract hardware specifications (CPU cores, RAM, OS) during discovery
+        \item The system shall register new systems in the database with appropriate department and lab assignments
+        \item The system shall update existing system records when re-discovered
+    \end{itemize}
+    
+    \item \textbf{Metrics Collection}
+    \begin{itemize}
+        \item The system shall collect CPU utilization percentage at 5-minute intervals
+        \item The system shall collect RAM usage (used/total) at 5-minute intervals
+        \item The system shall collect disk I/O statistics (read/write rates) at 5-minute intervals
+        \item The system shall collect network throughput (incoming/outgoing) at 5-minute intervals
+        \item The system shall record system uptime and logged-in user count
+        \item The system shall support multi-protocol collection (SSH for Linux, WMI for Windows, SNMP for universal)
+        \item The system shall handle collection failures gracefully with retry mechanisms
+    \end{itemize}
+    
+    \item \textbf{Data Storage and Management}
+    \begin{itemize}
+        \item The system shall store time-series metrics data in TimescaleDB hypertables
+        \item The system shall automatically partition data by time (7-day chunks)
+        \item The system shall implement data compression after 7 days achieving 90\% space savings
+        \item The system shall maintain continuous aggregates for hourly and daily summaries
+        \item The system shall enforce retention policies (30 days raw data, 1 year aggregated data)
+    \end{itemize}
+    
+    \item \textbf{Alert Management}
+    \begin{itemize}
+        \item The system shall generate real-time alerts when metrics exceed configurable thresholds
+        \item The system shall support threshold rules (CPU > 90\%, RAM > 85\%, Disk > 90\%)
+        \item The system shall implement duration-based alerting to avoid false positives
+        \item The system shall automatically resolve alerts when conditions normalize
+        \item The system shall categorize alerts by severity (Info, Warning, Critical)
+        \item The system shall maintain alert history for audit and analysis
+    \end{itemize}
+    
+    \item \textbf{Analytics and Reporting}
+    \begin{itemize}
+        \item The system shall calculate utilization scores based on weighted resource usage
+        \item The system shall identify underutilized systems (< 20\% average utilization)
+        \item The system shall detect performance bottlenecks (CPU-bound, RAM-bound, Disk-bound)
+        \item The system shall generate department-level and lab-level aggregate reports
+        \item The system shall provide trend analysis for capacity planning
+    \end{itemize}
+    
+    \item \textbf{User Interface}
+    \begin{itemize}
+        \item The system shall provide a responsive web dashboard accessible from desktop and mobile
+        \item The system shall display real-time system status with color-coded indicators
+        \item The system shall provide interactive charts for metrics visualization
+        \item The system shall support hierarchical navigation (Department → Lab → System)
+        \item The system shall enable filtering and sorting of system lists
+        \item The system shall display active alerts with severity indicators
+    \end{itemize}
+    
+    \item \textbf{API Layer}
+    \begin{itemize}
+        \item The system shall provide RESTful API endpoints for all data access operations
+        \item The system shall implement authentication and authorization for API access
+        \item The system shall support pagination for large result sets
+        \item The system shall provide comprehensive API documentation
+    \end{itemize}
+\end{enumerate}
+
+\subsection{Non-Functional Requirements}
+
+Non-functional requirements define system qualities and constraints:
+
+\begin{enumerate}
+    \item \textbf{Performance Requirements}
+    \begin{itemize}
+        \item Dashboard page load time shall not exceed 2 seconds
+        \item API response time shall be under 500ms for 95\% of requests
+        \item Time-series queries shall leverage TimescaleDB optimization for sub-second responses
+        \item System shall support concurrent access by up to 50 users
+        \item Metrics collection shall complete within 2 minutes for 200 systems
+    \end{itemize}
+    
+    \item \textbf{Scalability Requirements}
+    \begin{itemize}
+        \item System shall support monitoring of at least 200 systems simultaneously
+        \item Database shall handle 40,000 metric insertions per hour (200 systems × 5 metrics × 12 intervals)
+        \item System architecture shall support horizontal scaling through additional collection workers
+        \item Time-series data storage shall accommodate 1 year of historical data
+    \end{itemize}
+    
+    \item \textbf{Reliability Requirements}
+    \begin{itemize}
+        \item System uptime shall be maintained at 99.5\% excluding planned maintenance
+        \item Collection failures shall not prevent monitoring of other systems
+        \item Database backups shall be performed daily with 30-day retention
+        \item System shall recover automatically from transient failures
+    \end{itemize}
+    
+    \item \textbf{Security Requirements}
+    \begin{itemize}
+        \item All API endpoints shall require authentication via JWT tokens
+        \item SSH credentials shall be stored securely with encryption
+        \item Database connections shall use encrypted channels (SSL/TLS)
+        \item User passwords shall be hashed using bcrypt (minimum 10 rounds)
+        \item API shall implement rate limiting to prevent abuse
+        \item System shall log all authentication attempts
+    \end{itemize}
+    
+    \item \textbf{Usability Requirements}
+    \begin{itemize}
+        \item Dashboard interface shall be intuitive requiring minimal training
+        \item All interactive elements shall provide visual feedback
+        \item Error messages shall be clear and actionable
+        \item System shall support common web browsers (Chrome, Firefox, Safari, Edge)
+        \item Interface shall be responsive across desktop, tablet, and mobile devices
+    \end{itemize}
+    
+    \item \textbf{Maintainability Requirements}
+    \begin{itemize}
+        \item Code shall follow consistent style guidelines
+        \item Database schema shall be version-controlled with migration scripts
+        \item System shall provide comprehensive logging for debugging
+        \item Architecture shall be modular to facilitate component replacement
+        \item Documentation shall be maintained for all major components
+    \end{itemize}
+    
+    \item \textbf{Portability Requirements}
+    \begin{itemize}
+        \item System shall support deployment on Linux-based servers
+        \item Docker containerization shall be supported for easy deployment
+        \item System shall be compatible with cloud and on-premises infrastructure
+        \item Database migrations shall be reversible
+    \end{itemize}
+\end{enumerate}
+
+\subsection{Hardware Requirements}
+
+\subsubsection{Server Infrastructure}
+
+\textbf{Monitoring Server (Database + Backend + Frontend):}
+
+\begin{itemize}
+    \item \textbf{Processor:} Intel Xeon / AMD EPYC with 8+ cores (16 threads) recommended
+    \item \textbf{Memory:} Minimum 16 GB RAM; 32 GB recommended for optimal performance
+    \item \textbf{Storage:} 
+    \begin{itemize}
+        \item 500 GB SSD for database (PostgreSQL + TimescaleDB)
+        \item NVMe SSD recommended for best I/O performance
+        \item RAID 10 configuration for redundancy and performance
+    \end{itemize}
+    \item \textbf{Network:} 1 Gbps Ethernet connection; 10 Gbps for large deployments
+    \item \textbf{Operating System:} Ubuntu Server 22.04 LTS / Rocky Linux 9 / Debian 12
+\end{itemize}
+
+\textbf{Bastion Host (Collection Server):}
+
+\begin{itemize}
+    \item \textbf{Processor:} 4+ cores
+    \item \textbf{Memory:} 8 GB RAM minimum
+    \item \textbf{Storage:} 100 GB SSD
+    \item \textbf{Network:} Access to target lab networks (VLANs)
+    \item \textbf{Operating System:} Ubuntu Server 22.04 LTS / Rocky Linux 9
+\end{itemize}
+
+\textbf{Target Systems (Monitored Systems):}
+
+\begin{itemize}
+    \item \textbf{Network Accessibility:} Systems must be accessible via SSH (Linux/macOS) or WMI (Windows)
+    \item \textbf{Protocols:} SSH port 22 open, WMI ports 135+445 open for Windows
+    \item \textbf{Performance Impact:} Minimal; agentless collection imposes negligible overhead
+\end{itemize}
+
+\subsection{Software Requirements}
+
+\subsubsection{Database Layer}
+
+\begin{itemize}
+    \item \textbf{PostgreSQL:} Version 16.0 or higher
+    \item \textbf{TimescaleDB Extension:} Version 2.0 or higher
+    \item \textbf{PostgreSQL Extensions:} pg\_stat\_statements, pgcrypto
+\end{itemize}
+
+\subsubsection{Backend Layer}
+
+\begin{itemize}
+    \item \textbf{Node.js:} Version 18 LTS or higher
+    \item \textbf{npm:} Version 9.0 or higher
+    \item \textbf{Backend Dependencies:}
+    \begin{itemize}
+        \item Express.js 4.18+ (Web framework)
+        \item Sequelize 6.35+ (ORM)
+        \item pg 8.11+ (PostgreSQL driver)
+        \item jsonwebtoken 9.0+ (JWT authentication)
+        \item bcrypt 5.1+ (Password hashing)
+        \item dotenv 16.0+ (Environment configuration)
+    \end{itemize}
+\end{itemize}
+
+\subsubsection{Frontend Layer}
+
+\begin{itemize}
+    \item \textbf{Node.js:} Version 18 LTS or higher (for build process)
+    \item \textbf{Frontend Framework:} React 18.2+
+    \item \textbf{Build Tool:} Vite 5.0+
+    \item \textbf{TypeScript:} Version 5.0+
+    \item \textbf{Frontend Dependencies:}
+    \begin{itemize}
+        \item React Router DOM 6.20+ (Routing)
+        \item Recharts 2.10+ (Data visualization)
+        \item Tailwind CSS 3.3+ (Styling framework)
+        \item Axios 1.6+ (HTTP client)
+    \end{itemize}
+\end{itemize}
+
+\subsubsection{Collection Layer}
+
+\begin{itemize}
+    \item \textbf{Bash:} Version 4.0+ (Collection scripts)
+    \item \textbf{Python:} Version 3.9+ (Queue processing, network monitoring)
+    \item \textbf{Python Libraries:}
+    \begin{itemize}
+        \item pika 1.3+ (RabbitMQ client)
+        \item psycopg2 2.9+ (PostgreSQL driver)
+        \item python-dotenv 1.0+ (Configuration)
+    \end{itemize}
+    \item \textbf{System Utilities:}
+    \begin{itemize}
+        \item nmap (Network scanning)
+        \item sshpass (SSH authentication)
+        \item jq (JSON processing)
+        \item netstat / ss (Network statistics)
+    \end{itemize}
+\end{itemize}
+
+\subsubsection{Optional Infrastructure}
+
+\begin{itemize}
+    \item \textbf{Message Queue:} RabbitMQ 3.12+ (for asynchronous processing)
+    \item \textbf{Containerization:} Docker 24.0+, Docker Compose 2.20+
+    \item \textbf{Web Server:} Nginx 1.24+ (reverse proxy, static file serving)
+    \item \textbf{Process Manager:} PM2 5.3+ (Node.js process management)
+\end{itemize}
+
+\subsubsection{Development Tools}
+
+\begin{itemize}
+    \item \textbf{Version Control:} Git 2.30+
+    \item \textbf{Code Editor:} Visual Studio Code / WebStorm / any modern IDE
+    \item \textbf{Database Client:} pgAdmin 4 / DBeaver / psql CLI
+    \item \textbf{API Testing:} Postman / Insomnia / curl
+\end{itemize}

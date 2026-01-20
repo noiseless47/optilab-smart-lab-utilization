@@ -1,0 +1,249 @@
+\documentclass[12pt,a4paper]{report}
+
+% ===============================
+% PACKAGES
+% ===============================
+\usepackage[a4paper,margin=1in]{geometry}
+\usepackage{graphicx}
+\usepackage{setspace}
+\usepackage{times}
+\usepackage{fancyhdr}
+\usepackage{tocloft}
+\usepackage{float}
+\usepackage{fancyvrb}
+\usepackage{framed}
+\usepackage{xcolor}
+\usepackage{url}
+\usepackage{array}
+\usepackage{listings}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{hyperref}
+
+
+\setlength{\Urlmuskip}{0mu plus 1mu}
+
+% ===============================
+% CODE LISTING CONFIGURATION
+% ===============================
+\lstset{
+    basicstyle=\ttfamily\footnotesize,
+    keywordstyle=\color{blue},
+    commentstyle=\color{green!60!black},
+    stringstyle=\color{red},
+    showstringspaces=false,
+    breaklines=true,
+    frame=single,
+    numbers=left,
+    numberstyle=\tiny\color{gray},
+    captionpos=b,
+    tabsize=2
+}
+
+% ===============================
+% HYPERREF CONFIGURATION
+% ===============================
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    filecolor=magenta,      
+    urlcolor=cyan,
+    citecolor=green
+}
+
+% ===============================
+% LINE SPACING
+% ===============================
+\onehalfspacing
+
+% ===============================
+% HEADER HEIGHT FIX
+% ===============================
+\setlength{\headheight}{15pt}
+
+% ===============================
+% LIGHTWEIGHT CODE BOX (FAST)
+% ===============================
+\newenvironment{codebox}
+{
+  \vspace{6pt}
+  \begin{framed}
+  \ttfamily\small
+}
+{
+  \end{framed}
+  \vspace{6pt}
+}
+
+% ===============================
+% DOCUMENT START
+% ===============================
+\begin{document}
+
+% ===============================
+% FRONT MATTER (NO HEADER / FOOTER)
+% ===============================
+\pagestyle{plain}
+\pagenumbering{roman}
+
+% =====================================================
+% FRONT PAGE
+% =====================================================
+\begin{center}
+
+{\Large \textbf{RV COLLEGE OF ENGINEERING®}}\\
+BENGALURU – 560059\\
+(Autonomous Institution Affiliated to VTU, Belagavi)\\[0.4cm]
+
+\includegraphics[width=0.25\textwidth]{rvce_logo.png}\\[0.8cm]
+
+{\Large \textbf{OPTILAB: SMART LAB RESOURCE}}\\
+{\Large \textbf{MONITORING SYSTEM}}\\[0.6cm]
+
+{\large \textbf{Project Report}}\\[0.3cm]
+
+{\large Database Management Systems}\\
+{\large (CD252IA)}\\[1cm]
+
+\textbf{Submitted By}\\[0.4cm]
+
+\textbf{Aayush Pandey (1RV23IS004)}\\
+\textbf{Asish Kumar Yeleti (1RV23IS026)}\\[1cm]
+
+\textbf{Under the Guidance of}\\[0.3cm]
+\textbf{Dr. Padmashree T}\\
+\textbf{Associate Professor}\\[1cm]
+
+in partial fulfillment for the award of degree of\\[0.2cm]
+\textbf{Bachelor of Engineering}\\
+in\\
+\textbf{INFORMATION SCIENCE AND ENGINEERING}\\[0.8cm]
+
+\textbf{2025--26}
+
+\end{center}
+
+\clearpage
+
+% =====================================================
+% CERTIFICATE PAGE
+% =====================================================
+\begin{center}
+
+{\large \textbf{RV COLLEGE OF ENGINEERING®, BENGALURU - 560059}}\\[0.2cm]
+(Autonomous Institution Affiliated to VTU, Belagavi)\\[0.4cm]
+
+{\large \textbf{DEPARTMENT OF INFORMATION SCIENCE AND ENGINEERING}}\\[1cm]
+
+{\LARGE \textbf{CERTIFICATE}}\\[1cm]
+
+\end{center}
+
+\begin{spacing}{1.5}
+\noindent
+Certified that the Mini Project work entitled \textbf{`OptiLab: Smart Lab Resource Monitoring System'} has been carried out as a part of \textbf{Database Management Systems Laboratory (CD252IA)} in partial fulfillment for the award of degree of Bachelor of Engineering in Information Science and Engineering of the Visvesvaraya Technological University, Belagavi during the year 2025-2026 by \textbf{Aayush Pandey (1RV23IS004), Asish Kumar Yeleti (1RV23IS026)}, who are bonafide students of RV College of Engineering®, Bengaluru. It is certified that all the corrections/suggestions indicated for the internal assessment have been incorporated in the report deposited in the departmental library. The report has been approved as it satisfies the academic requirements in respect of work prescribed by the institution for the said degree.
+
+\vspace{2cm}
+
+\begin{tabular}{p{7cm}p{7cm}}
+\textbf{Dr. Padmashree T} & \textbf{Dr. Mamatha GS} \\
+Associate Professor & Head of the Department \\
+Department of ISE, & Department of ISE, \\
+RVCE, Bengaluru-59 & RVCE, Bengaluru-59 \\[2cm]
+\end{tabular}
+
+\vspace{1.5cm}
+
+\begin{center}
+\begin{tabular}{p{6cm}p{6cm}}
+\textbf{Name of the Examiners} & \textbf{Signature with Date} \\[1cm]
+1. \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_ & \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_ \\[1cm]
+2. \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_ & \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_ \\
+\end{tabular}
+\end{center}
+
+\end{spacing}
+
+\clearpage
+
+% =====================================================
+% DECLARATION PAGE
+% =====================================================
+\begin{center}
+
+{\large \textbf{RV COLLEGE OF ENGINEERING®, BENGALURU - 560059}}\\[0.2cm]
+(Autonomous Institution Affiliated to VTU, Belagavi)\\[0.4cm]
+
+{\large \textbf{DEPARTMENT OF INFORMATION SCIENCE AND ENGINEERING}}\\[1cm]
+
+{\LARGE \textbf{DECLARATION}}\\[1cm]
+
+\end{center}
+
+\begin{spacing}{1.5}
+\noindent
+We \textbf{Aayush Pandey, Asish Kumar Yeleti}, are students of Fifth Semester B.E Department of Information Science and Engineering, RV College of Engineering®, bearing USN: \textbf{1RV23IS004, 1RV23IS026}, hereby declare that the project titled \textbf{``OptiLab: Smart Lab Resource Monitoring System''} has been carried out as a part of \textbf{DATABASE MANAGEMENT SYSTEMS (CD252IA)} by us and submitted in partial fulfillment of the program requirements for the award of degree in Bachelor of Engineering in Information Science and Engineering of the Visvevaraya Technological University, Belagavi during the year 2025-2026.
+
+\vspace{0.5cm}
+
+Further we declare that the content of the report has not been submitted previously by anybody for the award of any degree or diploma to any other University.
+
+\vspace{2cm}
+
+\begin{center}
+\begin{tabular}{p{6.5cm}p{6.5cm}}
+\textbf{Name} & \textbf{Signature with Date} \\[1cm]
+Aayush Pandey & \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_ \\[1cm]
+Asish Kumar Yeleti & \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_ \\
+\end{tabular}
+\end{center}
+
+\vspace{1cm}
+
+\noindent
+\textbf{Place:} Bengaluru
+
+\noindent
+\textbf{Date:} \today
+
+\end{spacing}
+
+\clearpage
+
+% ===============================
+% CONTENTS + MAIN PAGES (WITH HEADER / FOOTER)
+% ===============================
+\pagestyle{fancy}
+\fancyhf{}
+
+\fancyhead[L]{\textit{OptiLab: Smart Lab Resource Monitoring System}}
+\fancyhead[R]{\textit{DBMS}}
+\renewcommand{\headrulewidth}{1pt}
+
+\fancyfoot[L]{Dept. of ISE, RVCE}
+\fancyfoot[C]{2025--26}
+\fancyfoot[R]{\thepage}
+\renewcommand{\footrulewidth}{1pt}
+
+% ===============================
+% CONTENTS
+% ===============================
+\renewcommand{\contentsname}{\centering CONTENTS}
+\tableofcontents
+\clearpage
+
+% ===============================
+% MAIN CONTENT (ARABIC NUMBERS)
+% ===============================
+\pagenumbering{arabic}
+\include{chapter1}
+\include{chapter2}
+\include{chapter3}
+\include{chapter4}
+\include{chapter5}
+\include{chapter6}
+\include{bibliography}
+\include{codesnippets}
+\include{screenshots}
+
+\end{document}

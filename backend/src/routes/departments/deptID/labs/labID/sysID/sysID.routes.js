@@ -1,7 +1,24 @@
 const express = require('express');
 const router = express.Router({ mergeParams: true });
 const MetricsModel = require('../../../../../../models/metrics_models');
+const DepartmentModel = require('../../../../../../models/department_models');
 const metricsModel = new MetricsModel();
+const departmentModel = new DepartmentModel();
+
+// GET system information
+router.get("/info", async (req, res) => {
+    try {
+        const sysID = req.params.sysID;
+        const system = await departmentModel.getSystemByID(sysID);
+        if (!system) {
+            return res.status(404).json({ error: 'System not found' });
+        }
+        res.status(200).json(system);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+        console.error("Error:", err.message);
+    }
+});
 
 // GET latest metrics for the system (dashboard overview)
 router.get("/", async (req, res) => {

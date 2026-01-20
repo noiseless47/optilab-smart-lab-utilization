@@ -1,0 +1,193 @@
+-- ============================================================================
+-- DATABASE QUERIES FOR OPTILAB SMART LAB UTILIZATION
+-- ============================================================================
+
+-- This file contains:
+-- 3. Table Population Queries for HOD, department, labs, systems, metrics
+-- 4. Query execution for data retrieval required for the project (At least 5 queries)
+
+-- ============================================================================
+-- 3. TABLE POPULATION QUERIES
+-- ============================================================================
+
+-- Insert HODs
+INSERT INTO hods (hod_name, hod_email) VALUES
+('Dr. Rajesh Kumar', 'rajesh.kumar@rvce.edu.in'),
+('Dr. Priya Sharma', 'priya.sharma@rvce.edu.in'),
+('Dr. Amit Patel', 'amit.patel@rvce.edu.in'),
+('Dr. Sunita Verma', 'sunita.verma@rvce.edu.in'),
+('Dr. Vijay Singh', 'vijay.singh@rvce.edu.in');
+
+-- Insert Departments
+INSERT INTO departments (dept_name, dept_code, vlan_id, subnet_cidr, description, hod_id) VALUES
+('Information Science and Engineering', 'ISE', 'VLAN100', '10.30.0.0/24', 'Department of Information Science and Engineering', 1),
+('Computer Science and Engineering', 'CSE', 'VLAN101', '10.30.1.0/24', 'Department of Computer Science and Engineering', 2),
+('Electronics and Communication Engineering', 'ECE', 'VLAN102', '10.30.2.0/24', 'Department of Electronics and Communication Engineering', 3),
+('Mechanical Engineering', 'ME', 'VLAN103', '10.30.3.0/24', 'Department of Mechanical Engineering', 4),
+('Civil Engineering', 'CE', 'VLAN104', '10.30.4.0/24', 'Department of Civil Engineering', 5);
+
+-- Insert Labs
+INSERT INTO labs (lab_dept, lab_number, assistant_ids) VALUES
+(1, 101, '{1,2}'),  -- ISE Lab 101
+(1, 102, '{3}'),    -- ISE Lab 102
+(2, 201, '{4,5}'),  -- CSE Lab 201
+(2, 202, '{6}'),    -- CSE Lab 202
+(3, 301, '{7}'),    -- ECE Lab 301
+(4, 401, '{8}'),    -- ME Lab 401
+(5, 501, '{9}');    -- CE Lab 501
+
+-- Insert Systems
+INSERT INTO systems (system_number, lab_id, dept_id, hostname, ip_address, mac_address, cpu_model, cpu_cores, ram_total_gb, disk_total_gb, gpu_model, gpu_memory, snmp_enabled, ssh_port, status, notes) VALUES
+(1, 1, 1, 'ise-lab101-pc01', '10.30.0.11', '00:11:22:33:44:55', 'Intel Core i5-10400', 6, 16.0, 512.0, 'NVIDIA GTX 1650', 4.0, true, 22, 'active', 'Lab PC for ISE students'),
+(2, 1, 1, 'ise-lab101-pc02', '10.30.0.12', '00:11:22:33:44:56', 'Intel Core i5-10400', 6, 16.0, 512.0, 'NVIDIA GTX 1650', 4.0, true, 22, 'active', 'Lab PC for ISE students'),
+(3, 2, 1, 'ise-lab102-pc01', '10.30.0.21', '00:11:22:33:44:57', 'Intel Core i7-10700', 8, 32.0, 1024.0, 'NVIDIA RTX 3060', 12.0, true, 22, 'active', 'High-end workstation'),
+(4, 3, 2, 'cse-lab201-pc01', '10.30.1.11', '00:11:22:33:44:58', 'AMD Ryzen 5 5600X', 6, 16.0, 512.0, 'NVIDIA GTX 1660', 6.0, true, 22, 'active', 'CSE programming lab PC'),
+(5, 3, 2, 'cse-lab201-pc02', '10.30.1.12', '00:11:22:33:44:59', 'AMD Ryzen 5 5600X', 6, 16.0, 512.0, 'NVIDIA GTX 1660', 6.0, true, 22, 'active', 'CSE programming lab PC'),
+(6, 4, 2, 'cse-lab202-pc01', '10.30.1.21', '00:11:22:33:44:60', 'Intel Core i9-11900', 8, 64.0, 2048.0, 'NVIDIA RTX 3080', 10.0, true, 22, 'maintenance', 'Server-grade workstation'),
+(7, 5, 3, 'ece-lab301-pc01', '10.30.2.11', '00:11:22:33:44:61', 'Intel Core i5-10400', 6, 16.0, 512.0, NULL, NULL, true, 22, 'active', 'ECE simulation PC'),
+(8, 6, 4, 'me-lab401-pc01', '10.30.2.21', '00:11:22:33:44:62', 'AMD Ryzen 7 5800X', 8, 32.0, 1024.0, 'NVIDIA RTX 3070', 8.0, false, 22, 'offline', 'CAD workstation - currently offline'),
+(9, 7, 5, 'ce-lab501-pc01', '10.30.2.31', '00:11:22:33:44:63', 'Intel Core i7-11700', 8, 32.0, 1024.0, NULL, NULL, true, 22, 'active', 'Civil engineering analysis PC');
+
+-- Insert Metrics (sample time-series data)
+INSERT INTO metrics (system_id, timestamp, cpu_percent, cpu_temperature, ram_percent, disk_percent, disk_read_mbps, disk_write_mbps, network_sent_mbps, network_recv_mbps, gpu_percent, gpu_memory_used_gb, gpu_temperature, uptime_seconds, logged_in_users) VALUES
+(1, NOW() - INTERVAL '5 minutes', 45.2, 65.0, 72.1, 45.8, 12.5, 8.9, 2.1, 15.3, 23.4, 1.2, 58.0, 86400, 1),
+(1, NOW() - INTERVAL '4 minutes', 52.8, 68.0, 75.3, 46.2, 15.2, 11.4, 3.2, 18.7, 28.9, 1.5, 61.0, 86840, 2),
+(1, NOW() - INTERVAL '3 minutes', 38.9, 63.0, 68.7, 44.9, 9.8, 7.2, 1.8, 12.4, 19.2, 0.9, 55.0, 87240, 1),
+(2, NOW() - INTERVAL '5 minutes', 67.3, 72.0, 81.4, 52.1, 22.1, 16.8, 4.5, 28.9, 35.6, 2.1, 65.0, 75600, 3),
+(2, NOW() - INTERVAL '4 minutes', 71.8, 74.0, 84.2, 53.7, 25.4, 19.2, 5.1, 32.1, 41.2, 2.4, 68.0, 76040, 4),
+(3, NOW() - INTERVAL '5 minutes', 89.4, 78.0, 92.6, 67.3, 45.8, 38.9, 8.7, 52.4, 78.9, 8.5, 72.0, 129600, 2),
+(4, NOW() - INTERVAL '5 minutes', 34.7, 59.0, 58.9, 38.4, 8.2, 5.6, 1.4, 9.8, 15.3, 0.8, 52.0, 172800, 1),
+(5, NOW() - INTERVAL '5 minutes', 42.1, 62.0, 65.7, 41.2, 10.9, 7.8, 2.3, 14.6, 21.7, 1.1, 57.0, 86400, 2),
+(7, NOW() - INTERVAL '5 minutes', 56.8, 69.0, 74.3, 48.9, 18.7, 13.4, 3.8, 22.1, NULL, NULL, NULL, 64800, 1),
+(9, NOW() - INTERVAL '5 minutes', 48.2, 64.0, 69.8, 43.7, 14.3, 9.7, 2.6, 16.9, NULL, NULL, NULL, 108000, 1);
+
+-- ============================================================================
+-- 4. DATA RETRIEVAL QUERIES
+-- ============================================================================
+
+-- Query 1: Get all systems with department information
+SELECT 
+    s.system_id,
+    s.hostname,
+    s.ip_address::TEXT as ip_address,
+    d.dept_name,
+    d.dept_code,
+    s.status,
+    s.cpu_model,
+    s.ram_total_gb,
+    s.disk_total_gb
+FROM systems s
+JOIN departments d ON s.dept_id = d.dept_id
+ORDER BY d.dept_name, s.system_number;
+
+-- Query 2: Get latest metrics for all active systems
+SELECT DISTINCT ON (m.system_id)
+    s.hostname,
+    s.ip_address::TEXT as ip_address,
+    m.timestamp,
+    m.cpu_percent,
+    m.ram_percent,
+    m.disk_percent,
+    m.logged_in_users,
+    m.gpu_percent
+FROM metrics m
+JOIN systems s ON m.system_id = s.system_id
+WHERE s.status = 'active'
+ORDER BY m.system_id, m.timestamp DESC;
+
+-- Query 3: Get department-wise system statistics
+SELECT 
+    d.dept_name,
+    COUNT(s.system_id) as total_systems,
+    COUNT(s.system_id) FILTER (WHERE s.status = 'active') as active_systems,
+    COUNT(s.system_id) FILTER (WHERE s.status = 'offline') as offline_systems,
+    COUNT(s.system_id) FILTER (WHERE s.status = 'maintenance') as maintenance_systems,
+    ROUND(AVG(m.cpu_percent), 2) as avg_cpu_usage,
+    ROUND(AVG(m.ram_percent), 2) as avg_ram_usage
+FROM departments d
+LEFT JOIN systems s ON d.dept_id = s.dept_id
+LEFT JOIN metrics m ON s.system_id = m.system_id 
+    AND m.timestamp >= NOW() - INTERVAL '1 hour'
+GROUP BY d.dept_id, d.dept_name
+ORDER BY d.dept_name;
+
+-- Query 4: Get systems with high CPU usage (>80%) in the last hour
+SELECT 
+    s.hostname,
+    s.ip_address::TEXT as ip_address,
+    d.dept_name,
+    m.cpu_percent,
+    m.ram_percent,
+    m.timestamp
+FROM metrics m
+JOIN systems s ON m.system_id = s.system_id
+JOIN departments d ON s.dept_id = d.dept_id
+WHERE m.cpu_percent > 80 
+    AND m.timestamp >= NOW() - INTERVAL '1 hour'
+ORDER BY m.cpu_percent DESC, m.timestamp DESC;
+
+-- Query 5: Get lab utilization summary
+SELECT 
+    d.dept_name,
+    l.lab_number,
+    COUNT(s.system_id) as total_systems_in_lab,
+    COUNT(s.system_id) FILTER (WHERE s.status = 'active') as active_systems,
+    ROUND(AVG(m.cpu_percent), 2) as avg_cpu_usage,
+    ROUND(AVG(m.ram_percent), 2) as avg_ram_usage,
+    MAX(m.logged_in_users) as max_logged_in_users
+FROM labs l
+JOIN departments d ON l.lab_dept = d.dept_id
+LEFT JOIN systems s ON l.lab_id = s.lab_id
+LEFT JOIN metrics m ON s.system_id = m.system_id 
+    AND m.timestamp >= NOW() - INTERVAL '1 hour'
+GROUP BY l.lab_id, d.dept_name, l.lab_number
+ORDER BY d.dept_name, l.lab_number;
+
+-- Query 6: Get maintenance logs for the last 24 hours
+SELECT 
+    s.hostname,
+    ml.severity,
+    ml.message,
+    ml.date_at,
+    ml.is_acknowledged,
+    ml.acknowledged_by
+FROM maintainence_logs ml
+JOIN systems s ON ml.system_id = s.system_id
+WHERE ml.date_at >= NOW() - INTERVAL '24 hours'
+ORDER BY ml.date_at DESC;
+
+-- Query 7: Get systems by subnet
+SELECT * FROM get_systems_in_subnet('10.30.0.0/24');
+
+-- Query 8: Get active systems count by department
+SELECT * FROM count_active_systems_by_dept();
+
+-- Query 9: Get systems with GPU information
+SELECT 
+    s.hostname,
+    s.gpu_model,
+    s.gpu_memory,
+    m.gpu_percent,
+    m.gpu_memory_used_gb,
+    m.gpu_temperature
+FROM systems s
+LEFT JOIN metrics m ON s.system_id = m.system_id 
+    AND m.timestamp >= NOW() - INTERVAL '1 hour'
+WHERE s.gpu_model IS NOT NULL
+ORDER BY s.hostname;
+
+-- Query 10: Get network scan history
+SELECT 
+    ns.scan_id,
+    d.dept_name,
+    ns.scan_type,
+    ns.target_range,
+    ns.scan_start,
+    ns.scan_end,
+    ns.duration_seconds,
+    ns.systems_found,
+    ns.status
+FROM network_scans ns
+JOIN departments d ON ns.dept_id = d.dept_id
+ORDER BY ns.scan_start DESC
+LIMIT 10;
