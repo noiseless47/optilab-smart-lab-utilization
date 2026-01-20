@@ -1,21 +1,11 @@
 {
-  "labs": [
-    {
-      "lab_id": 1,
-      "dept_id": 1,
-      "ip_range": {
-        "from": "192.168.0.11",
-        "to": "192.168.0.11"
-      }
-    }
-  ],
   "ssh": {
     "user": "rvce",
     "private_key": "/home/aayush/.ssh/target_key",
     "timeout": 3
   },
   "db": {
-    "dsn": "postgres://aayush:Aayush1234@localhost:5433/optilab_mvp"
+    "dsn": "postgres://aayush:aayush@localhost:5433/optilab_mvp"
   },
   "scanner_interval_minutes": 30,
   "heartbeat_interval_minutes": 5,

@@ -25,24 +25,18 @@ def expand_range(from_ip, to_ip):
 def db_connect(cfg):
     return psycopg2.connect(cfg["db"]["dsn"], cursor_factory=RealDictCursor)
 
-def validate_lab_config(conn, lab):
-    """Validate that lab and department exist and are correctly related."""
+def validate_dept_config(conn, dept):
+    """Validate that department exists."""
     cur = conn.cursor()
     try:
         # Check if department exists
-        cur.execute("SELECT dept_id FROM departments WHERE dept_id = %s", (lab["dept_id"],))
+        cur.execute("SELECT dept_id FROM departments WHERE dept_id = %s", (dept["dept_id"],))
         if not cur.fetchone():
-            raise ValueError(f"Department {lab['dept_id']} does not exist in database")
+            raise ValueError(f"Department {dept['dept_id']} does not exist in database")
 
-        # Check if lab exists and belongs to the department
-        cur.execute("SELECT lab_id FROM labs WHERE lab_id = %s AND lab_dept = %s",
-                   (lab["lab_id"], lab["dept_id"]))
-        if not cur.fetchone():
-            raise ValueError(f"Lab {lab['lab_id']} does not exist or does not belong to department {lab['dept_id']}")
-
-        print(f"    ✓ Lab {lab['lab_id']} (Dept {lab['dept_id']}) validated")
+        print(f"    ✓ Department {dept['dept_id']} ({dept['dept_name']}) validated")
     except Exception as e:
-        print(f"    ✗ Lab validation failed: {e}")
+        print(f"    ✗ Department validation failed: {e}")
         raise
     finally:
         cur.close()
@@ -126,7 +120,7 @@ def ssh_identify(ip, ssh_cfg):
         return None
 
 def upsert_system(conn, ip, data, lab_id, dept_id):
-    print(f"    [DB] Inserting system {ip} into lab {lab_id}, dept {dept_id}")
+    print(f"    [DB] Inserting system {ip} into dept {dept_id}" + (f", lab {lab_id}" if lab_id else ""))
 
     cur = conn.cursor()
     try:
@@ -173,20 +167,35 @@ def upsert_system(conn, ip, data, lab_id, dept_id):
     finally:
         cur.close()
 
-def discover_lab(lab, ssh_cfg, conn):
-    # Validate lab configuration
-    validate_lab_config(conn, lab)
+def discover_department(dept, ssh_cfg, conn):
+    # Validate department configuration
+    validate_dept_config(conn, dept)
 
-    ips = expand_range(lab["ip_range"]["from"], lab["ip_range"]["to"])
+    # Get labs in this department
+    cur = conn.cursor()
+    cur.execute("SELECT lab_id FROM labs WHERE lab_dept = %s", (dept["dept_id"],))
+    labs = cur.fetchall()
+    cur.close()
+    
+    lab_id = labs[0]['lab_id'] if labs else None  # Assign to first lab if exists
+
+    # Get all IPs in the subnet
+    network = ipaddress.ip_network(dept["subnet_cidr"])
+    ips = [str(ip) for ip in network.hosts()]
+    
     responsive_hosts = []
-    print(f"[+] Scanning lab {lab['lab_id']} ({lab['ip_range']['from']}–{lab['ip_range']['to']})")
+    print(f"[+] Scanning department {dept['dept_id']} ({dept['dept_name']}) - {dept['subnet_cidr']} ({len(ips)} IPs)")
 
     # Step 1: Fast ping sweep
-    cmd = f"nmap -sn {lab['ip_range']['from']}-{lab['ip_range']['to'].split('.')[-1]} -oG -"
+    # Since nmap with large ranges might be slow, perhaps ping in parallel or use nmap
+    # For simplicity, use nmap on the network
+    cmd = f"nmap -sn {dept['subnet_cidr']} -oG -"
     nmap_out = run_cmd(cmd)
     for line in nmap_out.splitlines():
         if "Up" in line:
-            responsive_hosts.append(line.split()[1])
+            ip = line.split()[1]
+            if ip in ips:  # Ensure it's in our subnet
+                responsive_hosts.append(ip)
 
     print(f"    Found {len(responsive_hosts)} responsive hosts")
 
@@ -201,7 +210,7 @@ def discover_lab(lab, ssh_cfg, conn):
             info = future.result()
             if not info:
                 continue
-            upsert_system(conn, ip, info, lab["lab_id"], lab["dept_id"])
+            upsert_system(conn, ip, info, lab_id, dept["dept_id"])
             print(f"    [+] {ip} → {info['hostname']} (verified)")
 
 # ----------------------------------------------------------
@@ -250,8 +259,14 @@ if __name__ == "__main__":
 
     if sys.argv[1] == "scan":
         print(f"[+] Starting discovery scan at {datetime.now()}")
-        for lab in cfg["labs"]:
-            discover_lab(lab, cfg["ssh"], conn)
+        # Query departments from database
+        cur = conn.cursor()
+        cur.execute("SELECT dept_id, dept_name, subnet_cidr FROM departments WHERE subnet_cidr IS NOT NULL")
+        departments = cur.fetchall()
+        cur.close()
+        
+        for dept in departments:
+            discover_department(dict(dept), cfg["ssh"], conn)
         print("[+] Scan completed.")
     elif sys.argv[1] == "heartbeat":
         heartbeat(conn, cfg)
