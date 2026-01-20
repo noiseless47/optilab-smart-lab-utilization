@@ -151,26 +151,54 @@ get_disk_io() {
     # Returns disk read/write in MB/s
     
     if [[ -f /proc/diskstats ]]; then
-        # Linux: Use iostat if available
-        if command_exists iostat; then
-            local io_output=$(iostat -d -x 1 2 | tail -n +4 | awk '{if(NR==1) {read1=$6; write1=$7} else if(NR==2) {read2=$6; write2=$7}} END {printf "%.2f %.2f", read2-read1, write2-write1}')
-            echo "$io_output"
-        else
-            # Fallback: sample /proc/diskstats
-            local disk_line1=($(grep -w "sda\|vda\|nvme0n1" /proc/diskstats | head -1))
-            sleep 1
-            local disk_line2=($(grep -w "sda\|vda\|nvme0n1" /proc/diskstats | head -1))
-            
-            local sectors_read1=${disk_line1[5]:-0}
-            local sectors_written1=${disk_line1[9]:-0}
-            local sectors_read2=${disk_line2[5]:-0}
-            local sectors_written2=${disk_line2[9]:-0}
-            
-            local read_mb=$(awk "BEGIN {printf \"%.2f\", ($sectors_read2 - $sectors_read1) * 512 / 1024 / 1024}")
-            local write_mb=$(awk "BEGIN {printf \"%.2f\", ($sectors_written2 - $sectors_written1) * 512 / 1024 / 1024}")
-            
-            echo "$read_mb $write_mb"
+        # Fallback: sample /proc/diskstats (most reliable)
+        # Find the main disk device
+        local disk_device=$(lsblk -d -o name | grep -E "^(sda|vda|nvme0n1)" | head -1)
+        
+        # Default to common disk names if lsblk doesn't work
+        if [[ -z "$disk_device" ]]; then
+            for dev in sda vda nvme0n1; do
+                if grep -q "^.*$dev " /proc/diskstats 2>/dev/null; then
+                    disk_device="$dev"
+                    break
+                fi
+            done
         fi
+        
+        if [[ -z "$disk_device" ]]; then
+            echo "0.00 0.00"
+            return
+        fi
+        
+        # Read initial values
+        local disk_line1=($(grep -w "$disk_device" /proc/diskstats | head -1))
+        local sectors_read1=${disk_line1[5]:-0}
+        local sectors_written1=${disk_line1[9]:-0}
+        
+        # Wait and read again
+        sleep 2
+        
+        local disk_line2=($(grep -w "$disk_device" /proc/diskstats | head -1))
+        local sectors_read2=${disk_line2[5]:-0}
+        local sectors_written2=${disk_line2[9]:-0}
+        
+        # Calculate deltas (ensure we don't get negative values from counter rollover)
+        local sectors_read_delta=$((sectors_read2 - sectors_read1))
+        local sectors_written_delta=$((sectors_written2 - sectors_written1))
+        
+        # If delta is negative, it means counter rolled over or error - return 0
+        if [[ $sectors_read_delta -lt 0 ]]; then
+            sectors_read_delta=0
+        fi
+        if [[ $sectors_written_delta -lt 0 ]]; then
+            sectors_written_delta=0
+        fi
+        
+        # Convert sectors (512 bytes each) to MB/s over the 2-second interval
+        local read_mb=$(awk "BEGIN {printf \"%.2f\", $sectors_read_delta * 512 / 1024 / 1024 / 2}")
+        local write_mb=$(awk "BEGIN {printf \"%.2f\", $sectors_written_delta * 512 / 1024 / 1024 / 2}")
+        
+        echo "$read_mb $write_mb"
     else
         echo "0.00 0.00"
     fi
