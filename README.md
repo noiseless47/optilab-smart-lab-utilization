@@ -74,6 +74,16 @@ A comprehensive **Database Management System (DBMS) project** that monitors comp
 
 ---
 
+## 🏗️ Architecture
+
+![Architecture Diagram](docs/architecture_diagram.png)
+
+---
+
+## 📊 Database Schema
+
+![Schema Diagram](docs/schema_diagram.png)
+
 ---
 
 ## 🎓 DBMS Concepts Demonstrated
@@ -140,9 +150,9 @@ A comprehensive **Database Management System (DBMS) project** that monitors comp
 
 | Document | Description |
 |----------|-------------|
-| [QUICKSTART.md](QUICKSTART.md) | 15-minute quick start 
-| [SETUP_CHECKLIST.md](SETUP_CHECKLIST.md) | Setup checklist 
-| [IMPLEMENTATION_SUMMARY.md](IMPLEMENTATION_SUMMARY.md) | Implementation details 
+| [QUICKSTART.md](QUICKSTART.md) | 15-minute quick start |
+| [SETUP_CHECKLIST.md](SETUP_CHECKLIST.md) | Setup checklist |
+| [IMPLEMENTATION_SUMMARY.md](IMPLEMENTATION_SUMMARY.md) | Implementation details | 
 
 
 ---
