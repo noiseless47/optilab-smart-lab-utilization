@@ -40,4 +40,16 @@ router.put("/:maintainenceID", (req, res) => {
     });
 })
 
+router.delete("/:maintainenceID", (req, res) => {
+    const maintainenceID = req.params.maintainenceID;
+
+    departmentModel.deleteMaintainence(maintainenceID)
+    .then(() => {
+        res.status(200).json({ message: 'Maintenance log deleted successfully' });
+    })
+    .catch((err) => {
+        res.status(500).json({ error: err.message });
+    });
+})
+
 module.exports = router;

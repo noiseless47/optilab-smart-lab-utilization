@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import { TrendingUp, TrendingDown, BarChart3, PieChart, Activity, CheckCircle } from 'lucide-react'
 import Loading from '../components/Loading'
 import api from '../lib/api'
 
@@ -10,6 +9,22 @@ interface SystemWithMetrics {
   cpu: number
   memory: number
   disk: number
+  gpu?: number
+  p95_cpu?: number
+  p95_ram?: number
+}
+
+interface AggregatedMetrics {
+  timestamp: string
+  avg_cpu_percent: number
+  max_cpu_percent: number
+  p95_cpu_percent: number
+  avg_ram_percent: number
+  max_ram_percent: number
+  p95_ram_percent: number
+  avg_gpu_percent: number
+  max_gpu_percent: number
+  metric_count: number
 }
 
 export default function Analytics() {
@@ -18,6 +33,7 @@ export default function Analytics() {
   const [systems, setSystems] = useState<SystemWithMetrics[]>([])
   const [avgCpu, setAvgCpu] = useState(0)
   const [avgMemory, setAvgMemory] = useState(0)
+  const [aggregatedData, setAggregatedData] = useState<AggregatedMetrics[]>([])
 
   useEffect(() => {
     fetchAnalytics()
@@ -27,38 +43,77 @@ export default function Analytics() {
     try {
       setLoading(true)
       setError(null)
-      const systemsRes = await api.get('/api/systems/all')
+      const systemsRes = await api.get('/systems/all')
       const systemsData = systemsRes.data
 
-      const systemsWithMetrics = await Promise.all(
-        systemsData.map(async (system: any) => {
-          try {
-            const metricsRes = await api.get(`/api/systems/${system.system_id}/metrics/latest`)
-            const metrics = metricsRes.data
-            return {
-              system_id: system.system_id,
-              hostname: system.hostname,
-              lab_id: system.lab_id,
-              cpu: metrics?.cpu_percent || 0,
-              memory: metrics?.ram_percent || 0,
-              disk: metrics?.disk_percent || 0
-            }
-          } catch {
-            return {
-              system_id: system.system_id,
-              hostname: system.hostname,
-              lab_id: system.lab_id,
-              cpu: 0,
-              memory: 0,
-              disk: 0
-            }
+      // Fetch aggregated data for all systems (last 24 hours)
+      const aggregatedPromises = systemsData.map(async (system: any) => {
+        try {
+          const metricsRes = await api.get(`/systems/${system.system_id}/metrics/hourly?hours=24`)
+          return {
+            system_id: system.system_id,
+            hostname: system.hostname,
+            lab_id: system.lab_id,
+            data: metricsRes.data
           }
-        })
-      )
+        } catch {
+          return {
+            system_id: system.system_id,
+            hostname: system.hostname,
+            lab_id: system.lab_id,
+            data: []
+          }
+        }
+      })
+
+      const aggregatedResults = await Promise.all(aggregatedPromises)
+      
+      // Process aggregated data
+      const systemsWithMetrics: SystemWithMetrics[] = []
+      let allAggregatedData: AggregatedMetrics[] = []
+      
+      aggregatedResults.forEach(result => {
+        const latestData = result.data[0] // Most recent hour
+        if (latestData) {
+          systemsWithMetrics.push({
+            system_id: result.system_id,
+            hostname: result.hostname,
+            lab_id: result.lab_id,
+            cpu: parseFloat(latestData.avg_cpu_percent) || 0,
+            memory: parseFloat(latestData.avg_ram_percent) || 0,
+            disk: parseFloat(latestData.avg_disk_io_wait) || 0,
+            gpu: parseFloat(latestData.avg_gpu_percent) || 0,
+            p95_cpu: parseFloat(latestData.p95_cpu_percent) || 0,
+            p95_ram: parseFloat(latestData.p95_ram_percent) || 0
+          })
+          
+          // Add to global aggregated data
+          allAggregatedData = allAggregatedData.concat(
+            result.data.map((item: any) => ({
+              ...item,
+              system_id: result.system_id,
+              hostname: result.hostname
+            }))
+          )
+        } else {
+          systemsWithMetrics.push({
+            system_id: result.system_id,
+            hostname: result.hostname,
+            lab_id: result.lab_id,
+            cpu: 0,
+            memory: 0,
+            disk: 0,
+            gpu: 0,
+            p95_cpu: 0,
+            p95_ram: 0
+          })
+        }
+      })
 
       setSystems(systemsWithMetrics)
+      setAggregatedData(allAggregatedData)
       
-      // Calculate averages
+      // Calculate averages from latest data
       const totalCpu = systemsWithMetrics.reduce((acc, s) => acc + s.cpu, 0)
       const totalMemory = systemsWithMetrics.reduce((acc, s) => acc + s.memory, 0)
       setAvgCpu(systemsWithMetrics.length > 0 ? Math.round(totalCpu / systemsWithMetrics.length) : 0)
@@ -83,226 +138,89 @@ export default function Analytics() {
     )
   }
 
-  // Get top consumers by CPU
+  // Get top consumers by 95th percentile CPU
   const topCpuConsumers = [...systems]
-    .sort((a, b) => b.cpu - a.cpu)
+    .sort((a, b) => (b.p95_cpu || 0) - (a.p95_cpu || 0))
     .slice(0, 5)
 
-  // Count high usage systems
-  const highCpuCount = systems.filter(s => s.cpu > 80).length
-  const highMemoryCount = systems.filter(s => s.memory > 80).length
+  // Calculate additional averages
+  const avgGpu = systems.length > 0 ? Math.round(systems.reduce((acc, s) => acc + (s.gpu || 0), 0) / systems.length) : 0
+  const avgP95Cpu = systems.length > 0 ? Math.round(systems.reduce((acc, s) => acc + (s.p95_cpu || 0), 0) / systems.length) : 0
+  const avgP95Ram = systems.length > 0 ? Math.round(systems.reduce((acc, s) => acc + (s.p95_ram || 0), 0) / systems.length) : 0
+
+  // Count high usage systems (using 95th percentile)
+  const highCpuCount = systems.filter(s => (s.p95_cpu || 0) > 80).length
+  const highMemoryCount = systems.filter(s => (s.p95_ram || 0) > 80).length
   const highDiskCount = systems.filter(s => s.disk > 80).length
+  const highGpuCount = systems.filter(s => (s.gpu || 0) > 80).length
 
   return (
     <div className="max-w-7xl mx-auto px-6 py-12">
-      <div className="mb-8">
-        <h1 className="text-4xl font-bold text-gray-900 mb-2">Analytics</h1>
-        <p className="text-gray-600">Advanced insights and resource optimization</p>
+      <div className="mb-12">
+        <h1 className="text-4xl font-bold text-gray-900 mb-2">System Analytics</h1>
+        <p className="text-gray-600">Average resource utilization across all monitored systems</p>
       </div>
 
-      {/* Key Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-12">
-        <MetricCard
-          title="Avg CPU Usage"
-          value={`${avgCpu}%`}
-          change={avgCpu > 70 ? '+High' : 'Normal'}
-          trend={avgCpu > 70 ? 'up' : 'down'}
-          icon={<Activity className="w-5 h-5" />}
-        />
-        <MetricCard
-          title="Avg Memory"
-          value={`${avgMemory}%`}
-          change={avgMemory > 70 ? '+High' : 'Normal'}
-          trend={avgMemory > 70 ? 'up' : 'down'}
-          icon={<Activity className="w-5 h-5" />}
-        />
-        <MetricCard
-          title="Total Systems"
-          value={`${systems.length}`}
-          change="Active"
-          trend="down"
-          icon={<TrendingUp className="w-5 h-5" />}
-        />
-        <MetricCard
-          title="High CPU Systems"
-          value={`${highCpuCount}`}
-          change={highCpuCount > 5 ? 'Warning' : 'Normal'}
-          trend={highCpuCount > 5 ? 'up' : 'down'}
-          icon={<TrendingDown className="w-5 h-5" />}
-        />
-      </div>
-
-      {/* Charts Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-12">
-        <ChartCard
-          title="Resource Utilization Trend"
-          subtitle="Last 7 days"
-          icon={<BarChart3 className="w-5 h-5" />}
-        />
-        <ChartCard
-          title="Department Distribution"
-          subtitle="By resource consumption"
-          icon={<PieChart className="w-5 h-5" />}
-        />
-      </div>
-
-      {/* Top Consumers */}
-      <div className="card p-6 mb-12">
-        <h2 className="text-xl font-semibold text-gray-900 mb-6">Top CPU Consumers</h2>
-        {topCpuConsumers.length === 0 ? (
-          <p className="text-gray-500 text-center py-8">No system data available</p>
-        ) : (
-          <div className="space-y-4">
-            {topCpuConsumers.map(system => (
-              <ConsumerBar
-                key={system.system_id}
-                system={system.hostname}
-                lab={`Lab ${system.lab_id}`}
-                value={Math.round(system.cpu)}
-                color={system.cpu > 90 ? 'red' : system.cpu > 70 ? 'yellow' : 'green'}
-              />
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Recommendations */}
-      <div className="card p-6">
-        <h2 className="text-xl font-semibold text-gray-900 mb-6">Optimization Recommendations</h2>
-        <div className="space-y-4">
-          {highMemoryCount > 0 && (
-            <Recommendation
-              type="hardware"
-              title="High Memory Usage Detected"
-              description={`${highMemoryCount} system(s) consistently exceed 80% memory usage. Consider upgrading RAM.`}
-              priority="high"
-            />
-          )}
-          {highDiskCount > 0 && (
-            <Recommendation
-              type="maintenance"
-              title="Disk Cleanup Required"
-              description={`${highDiskCount} system(s) have disk usage above 80%. Schedule cleanup to prevent performance degradation.`}
-              priority="high"
-            />
-          )}
-          {highCpuCount > 0 && (
-            <Recommendation
-              type="optimization"
-              title="High CPU Load"
-              description={`${highCpuCount} system(s) are experiencing elevated CPU usage. Consider workload balancing.`}
-              priority="medium"
-            />
-          )}
-          {highCpuCount === 0 && highMemoryCount === 0 && highDiskCount === 0 && (
-            <div className="text-center py-8 text-gray-500">
-              <CheckCircle className="w-12 h-12 mx-auto mb-2 text-green-500" />
-              <p>All systems operating within normal parameters</p>
-            </div>
-          )}
+      {error && (
+        <div className="card p-6 mb-8 bg-red-50 border-red-200">
+          <p className="text-red-700">{error}</p>
         </div>
+      )}
+
+      {/* Key Metrics - Clean and Minimal */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <MetricCard
+          title="Average CPU Utilization"
+          value={`${avgCpu}%`}
+          subtitle={`95th percentile: ${avgP95Cpu}%`}
+          status={avgP95Cpu > 80 ? 'critical' : avgCpu > 70 ? 'warning' : 'normal'}
+        />
+        <MetricCard
+          title="Average Memory Utilization"
+          value={`${avgMemory}%`}
+          subtitle={`95th percentile: ${avgP95Ram}%`}
+          status={avgP95Ram > 80 ? 'critical' : avgMemory > 70 ? 'warning' : 'normal'}
+        />
+        <MetricCard
+          title="Average GPU Utilization"
+          value={`${avgGpu}%`}
+          subtitle={`${systems.length} systems monitored`}
+          status={avgGpu > 80 ? 'critical' : avgGpu > 70 ? 'warning' : 'normal'}
+        />
+        <MetricCard
+          title="Average Disk I/O"
+          value={`${Math.round(systems.reduce((acc, s) => acc + s.disk, 0) / (systems.length || 1))}%`}
+          subtitle={`Across ${systems.length} systems`}
+          status="normal"
+        />
       </div>
     </div>
   )
 }
 
-function MetricCard({ title, value, change, trend, icon }: {
+function MetricCard({ title, value, subtitle, status }: {
   title: string
   value: string
-  change: string
-  trend: string
-  icon: React.ReactNode
+  subtitle: string
+  status: 'normal' | 'warning' | 'critical'
 }) {
-  const trendColor = trend === 'up' ? 'text-green-600' : 'text-red-600'
-  const TrendIcon = trend === 'up' ? TrendingUp : TrendingDown
+  const statusColors = {
+    normal: 'border-green-200 bg-green-50',
+    warning: 'border-yellow-200 bg-yellow-50',
+    critical: 'border-red-200 bg-red-50'
+  }
+
+  const valueColors = {
+    normal: 'text-green-700',
+    warning: 'text-yellow-700',
+    critical: 'text-red-700'
+  }
 
   return (
-    <div className="card p-6">
-      <div className="flex items-center justify-between mb-4">
-        <div className="text-gray-600">{icon}</div>
-        <div className={`flex items-center space-x-1 ${trendColor} text-sm font-medium`}>
-          <TrendIcon className="w-4 h-4" />
-          <span>{change}</span>
-        </div>
-      </div>
-      <div className="text-3xl font-bold text-gray-900 mb-1">{value}</div>
-      <div className="text-sm text-gray-500">{title}</div>
-    </div>
-  )
-}
-
-function ChartCard({ title, subtitle, icon }: { title: string, subtitle: string, icon: React.ReactNode }) {
-  return (
-    <div className="card p-6">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h3 className="text-lg font-semibold text-gray-900">{title}</h3>
-          <p className="text-sm text-gray-500 mt-1">{subtitle}</p>
-        </div>
-        <div className="text-gray-600">{icon}</div>
-      </div>
-      <div className="h-64 bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg flex items-center justify-center">
-        <p className="text-gray-400 text-sm">Chart visualization placeholder</p>
-      </div>
-    </div>
-  )
-}
-
-function ConsumerBar({ system, lab, value, color }: { system: string, lab: string, value: number, color: string }) {
-  const colorClasses = {
-    red: 'bg-red-500',
-    yellow: 'bg-yellow-500',
-    green: 'bg-green-500',
-  }[color]
-
-  return (
-    <div>
-      <div className="flex items-center justify-between mb-2">
-        <div>
-          <div className="font-medium text-gray-900">{system}</div>
-          <div className="text-sm text-gray-500">{lab}</div>
-        </div>
-        <span className="text-sm font-semibold text-gray-900">{value}%</span>
-      </div>
-      <div className="w-full bg-gray-100 rounded-full h-2">
-        <div className={`${colorClasses} h-2 rounded-full`} style={{ width: `${value}%` }}></div>
-      </div>
-    </div>
-  )
-}
-
-function Recommendation({ type, title, description, priority }: {
-  type: string
-  title: string
-  description: string
-  priority: string
-}) {
-  const typeConfig = {
-    hardware: { icon: '🔧', bg: 'bg-blue-50', border: 'border-blue-200' },
-    optimization: { icon: '⚡', bg: 'bg-purple-50', border: 'border-purple-200' },
-    maintenance: { icon: '🛠️', bg: 'bg-orange-50', border: 'border-orange-200' },
-  }[type]
-
-  const priorityConfig = {
-    high: { bg: 'bg-red-100', text: 'text-red-700' },
-    medium: { bg: 'bg-yellow-100', text: 'text-yellow-700' },
-    low: { bg: 'bg-green-100', text: 'text-green-700' },
-  }[priority]
-
-  return (
-    <div className={`${typeConfig?.bg} ${typeConfig?.border} border rounded-lg p-4`}>
-      <div className="flex items-start space-x-3">
-        <div className="text-2xl">{typeConfig?.icon}</div>
-        <div className="flex-1">
-          <div className="flex items-center justify-between mb-2">
-            <h4 className="font-semibold text-gray-900">{title}</h4>
-            <span className={`px-2 py-1 rounded-full text-xs font-medium ${priorityConfig?.bg} ${priorityConfig?.text}`}>
-              {priority.toUpperCase()}
-            </span>
-          </div>
-          <p className="text-sm text-gray-600">{description}</p>
-        </div>
-      </div>
+    <div className={`card p-6 ${statusColors[status]}`}>
+      <h3 className="text-sm font-medium text-gray-600 mb-2">{title}</h3>
+      <div className={`text-4xl font-bold ${valueColors[status]} mb-1`}>{value}</div>
+      <p className="text-sm text-gray-500">{subtitle}</p>
     </div>
   )
 }

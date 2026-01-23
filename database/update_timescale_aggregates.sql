@@ -5,6 +5,9 @@
 -- Run this after the initial TimescaleDB setup or when schema changes occur
 -- ============================================================================
 
+-- Enable TimescaleDB Toolkit extension for percentile functions
+CREATE EXTENSION IF NOT EXISTS timescaledb_toolkit;
+
 -- Drop existing continuous aggregates if they exist
 DROP MATERIALIZED VIEW IF EXISTS hourly_performance_stats CASCADE;
 DROP MATERIALIZED VIEW IF EXISTS daily_performance_stats CASCADE;

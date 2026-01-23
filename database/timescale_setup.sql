@@ -8,6 +8,9 @@
 -- Enable TimescaleDB extension
 CREATE EXTENSION IF NOT EXISTS timescaledb;
 
+-- Enable TimescaleDB Toolkit extension for advanced aggregation functions
+CREATE EXTENSION IF NOT EXISTS timescaledb_toolkit;
+
 -- ============================================================================
 -- Convert metrics to Hypertable
 -- ============================================================================
@@ -39,8 +42,8 @@ SELECT create_hypertable(
     'metrics',
     'timestamp',
     chunk_time_interval => INTERVAL '1 day',
-    if_not_exists => TRUE
-    -- Remove migrate_data parameter for safety
+    if_not_exists => TRUE,
+    migrate_data => TRUE
 );
 
 -- Set compression policy for older data
@@ -181,16 +184,17 @@ CREATE INDEX IF NOT EXISTS idx_daily_stats_bucket ON daily_performance_stats (sy
 -- ============================================================================
 
 -- Insert some sample data to test the setup
-INSERT INTO metrics (timestamp, system_id, cpu_percent, ram_percent, gpu_utilization, disk_io_wait_percent, hostname) 
-SELECT 
-    NOW() - (interval '1 minute' * (seq * 5)),
-    'system-' || ((seq % 3) + 1)::text,
-    (random() * 100)::double precision,
-    (random() * 100)::double precision,
-    (random() * 100)::double precision,
-    (random() * 10)::double precision,
-    'host-' || ((seq % 3) + 1)::text
-FROM generate_series(1, 100) AS seq;
+-- INSERT INTO metrics (timestamp, system_id, cpu_percent, ram_percent, gpu_percent, disk_percent, disk_read_mbps, disk_write_mbps) 
+-- SELECT 
+--     NOW() - (interval '1 minute' * (seq * 5)),
+--     (seq % 3) + 1,
+--     (random() * 100)::numeric(5,2),
+--     (random() * 100)::numeric(5,2),
+--     (random() * 100)::numeric(5,2),
+--     (random() * 10)::numeric(5,2),
+--     (random() * 100)::numeric(10,2),
+--     (random() * 100)::numeric(10,2)
+-- FROM generate_series(1, 100) AS seq;
 
 -- ============================================================================
 -- Verification Queries

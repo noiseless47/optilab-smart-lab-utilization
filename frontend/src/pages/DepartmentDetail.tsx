@@ -31,6 +31,7 @@ interface LabAssistant {
 interface MaintenanceLog {
   maintainence_id: number
   system_id: number
+  lab_id: number
   date_at: string
   severity: string
   message: string
@@ -230,8 +231,10 @@ export default function DepartmentDetail() {
 
     try {
       setUpdatingMaintenanceId(selectedMaintenance.maintainence_id)
+      // Find the lab_id for this maintenance log
+      const labId = selectedMaintenance.lab_id
       await api.put(
-        `/departments/${deptId}/labs/maintenance/${selectedMaintenance.maintainence_id}`,
+        `/departments/${deptId}/labs/${labId}/maintenance/${selectedMaintenance.maintainence_id}`,
         {
           resolved_at: new Date().toISOString(),
         }
@@ -389,19 +392,28 @@ export default function DepartmentDetail() {
 
       {/* Maintenance Logs Section */}
       <div>
-        <div className="flex items-center space-x-3 mb-6">
-          <Wrench className="w-6 h-6 text-primary-600" />
-          <h2 className="text-2xl font-bold text-gray-900">Maintenance Logs</h2>
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center space-x-3">
+            <Wrench className="w-6 h-6 text-primary-600" />
+            <h2 className="text-2xl font-bold text-gray-900">Recent Issues</h2>
+            <span className="text-sm text-gray-500">({maintenanceLogs.filter(log => !log.resolved_at && !log.is_acknowledged).length} pending)</span>
+          </div>
+          <button
+            onClick={() => navigate(`/departments/${deptId}/maintenance`)}
+            className="btn-secondary text-sm"
+          >
+            View All Logs
+          </button>
         </div>
         
-        {maintenanceLogs.length === 0 ? (
+        {maintenanceLogs.filter(log => !log.resolved_at && !log.is_acknowledged).length === 0 ? (
           <div className="card p-8 text-center">
             <Wrench className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-            <p className="text-gray-600">No maintenance logs yet.</p>
+            <p className="text-gray-600">No pending issues.</p>
           </div>
         ) : (
           <div className="space-y-3">
-            {maintenanceLogs.map((log) => (
+            {maintenanceLogs.filter(log => !log.resolved_at && !log.is_acknowledged).slice(0, 5).map((log) => (
               <button
                 key={log.maintainence_id}
                 onClick={() => openMaintenanceDetail(log)}

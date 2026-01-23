@@ -10,6 +10,7 @@ import Departments from './pages/Departments'
 import DepartmentDetail from './pages/DepartmentDetail'
 import Lab from './pages/Lab'
 import SystemDetail from './pages/SystemDetail'
+import MaintenanceLogs from './pages/MaintenanceLogs'
 
 function App() {
   return (
@@ -25,6 +26,7 @@ function App() {
           } />
           <Route path="/departments" element={<Departments />} />
           <Route path="/departments/:deptId" element={<DepartmentDetail />} />
+          <Route path="/departments/:deptId/maintenance" element={<MaintenanceLogs />} />
           <Route path="/departments/:deptId/labs/:labId" element={<Lab />} />
           <Route path="/departments/:deptId/labs/:labId/systems/:systemId" element={<SystemDetail />} />
           <Route path="/systems" element={<Systems />} />

@@ -283,7 +283,7 @@ class DepartmentModel {
     async getMaintainenceByLabID(lab_id) {
         this.validateID(lab_id)
         const query = this.sql`
-            SELECT ml.* FROM maintainence_logs ml
+            SELECT ml.*, s.lab_id, s.hostname FROM maintainence_logs ml
             INNER JOIN systems s ON ml.system_id = s.system_id
             WHERE s.lab_id = ${lab_id}
             ORDER BY ml.date_at DESC
@@ -291,6 +291,23 @@ class DepartmentModel {
         const result = await this.query(
             query,
             'Failed to get maintainence logs'
+        )
+        return result
+    }
+
+    async getAllMaintenanceByDeptID(dept_id) {
+        this.validateID(dept_id)
+        const query = this.sql`
+            SELECT ml.*, s.lab_id, s.hostname, l.lab_number
+            FROM maintainence_logs ml
+            INNER JOIN systems s ON ml.system_id = s.system_id
+            INNER JOIN labs l ON s.lab_id = l.lab_id
+            WHERE l.lab_dept = ${dept_id}
+            ORDER BY ml.date_at DESC
+        `
+        const result = await this.query(
+            query,
+            'Failed to get all maintainence logs for department'
         )
         return result
     }
@@ -333,6 +350,15 @@ class DepartmentModel {
             console.error('Full error:', error)
             throw new Error(`Failed to update maintainence log: ${error.message}`)
         }
+    }
+
+    async deleteMaintainence(maintainence_id) {
+        this.validateID(maintainence_id)
+        const query = this.sql`DELETE FROM maintainence_logs WHERE maintainence_id = ${maintainence_id}`
+        return await this.query(
+            query,
+            'Failed to delete maintainence log'
+        )
     }
 
     async getMaintainenceBySystemID(system_id) {

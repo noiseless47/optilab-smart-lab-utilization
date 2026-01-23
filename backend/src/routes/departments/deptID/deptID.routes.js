@@ -42,4 +42,17 @@ router.delete("/", (req, res) => {
 router.use('/labs', require('./labs/labs.routes'));
 router.use('/faculty', require('./faculty/faculty.routes'));
 router.use('/lab-assistants', require('./faculty/faculty.routes'));
+
+// GET all maintenance logs for a department
+router.get('/maintenance', async (req, res) => {
+    try {
+        const deptID = req.params.deptID;
+        const maintenanceLogs = await departmentModel.getAllMaintenanceByDeptID(deptID);
+        res.status(200).json(maintenanceLogs);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+        console.error("Error:", err.message);
+    }
+});
+
 module.exports = router;

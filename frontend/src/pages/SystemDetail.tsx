@@ -761,39 +761,39 @@ export default function SystemDetail() {
                 <div className="space-y-3">
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-gray-500">Avg CPU</span>
-                    <span className="font-bold text-purple-600">{metric.avg_cpu_percent.toFixed(1)}%</span>
+                    <span className="font-bold text-purple-600">{parseFloat(metric.avg_cpu_percent).toFixed(1)}%</span>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-gray-500">Max CPU</span>
-                    <span className="font-bold text-purple-700">{metric.max_cpu_percent.toFixed(1)}%</span>
+                    <span className="font-bold text-purple-700">{parseFloat(metric.max_cpu_percent).toFixed(1)}%</span>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-gray-500">P95 CPU</span>
-                    <span className="font-bold text-purple-500">{metric.p95_cpu_percent.toFixed(1)}%</span>
+                    <span className="font-bold text-purple-500">{parseFloat(metric.p95_cpu_percent).toFixed(1)}%</span>
                   </div>
                   <hr className="my-2" />
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-gray-500">Avg RAM</span>
-                    <span className="font-bold text-green-600">{metric.avg_ram_percent.toFixed(1)}%</span>
+                    <span className="font-bold text-green-600">{parseFloat(metric.avg_ram_percent).toFixed(1)}%</span>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-gray-500">Max RAM</span>
-                    <span className="font-bold text-green-700">{metric.max_ram_percent.toFixed(1)}%</span>
+                    <span className="font-bold text-green-700">{parseFloat(metric.max_ram_percent).toFixed(1)}%</span>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-gray-500">P95 RAM</span>
-                    <span className="font-bold text-green-500">{metric.p95_ram_percent.toFixed(1)}%</span>
+                    <span className="font-bold text-green-500">{parseFloat(metric.p95_ram_percent).toFixed(1)}%</span>
                   </div>
                   {metric.total_disk_read_gb !== undefined && (
                     <>
                       <hr className="my-2" />
                       <div className="flex justify-between items-center">
                         <span className="text-sm text-gray-500">Disk Read</span>
-                        <span className="font-bold text-teal-600">{metric.total_disk_read_gb.toFixed(2)} GB</span>
+                        <span className="font-bold text-teal-600">{parseFloat(metric.total_disk_read_gb).toFixed(2)} GB</span>
                       </div>
                       <div className="flex justify-between items-center">
                         <span className="text-sm text-gray-500">Disk Write</span>
-                        <span className="font-bold text-amber-600">{metric.total_disk_write_gb?.toFixed(2)} GB</span>
+                        <span className="font-bold text-amber-600">{parseFloat(metric.total_disk_write_gb || 0).toFixed(2)} GB</span>
                       </div>
                     </>
                   )}
@@ -802,11 +802,11 @@ export default function SystemDetail() {
                       <hr className="my-2" />
                       <div className="flex justify-between items-center">
                         <span className="text-sm text-gray-500">Avg GPU</span>
-                        <span className="font-bold text-pink-600">{metric.avg_gpu_percent.toFixed(1)}%</span>
+                        <span className="font-bold text-pink-600">{parseFloat(metric.avg_gpu_percent).toFixed(1)}%</span>
                       </div>
                       <div className="flex justify-between items-center">
                         <span className="text-sm text-gray-500">Max GPU</span>
-                        <span className="font-bold text-pink-700">{metric.max_gpu_percent?.toFixed(1)}%</span>
+                        <span className="font-bold text-pink-700">{parseFloat(metric.max_gpu_percent || 0).toFixed(1)}%</span>
                       </div>
                     </>
                   )}
