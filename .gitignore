@@ -60,6 +60,6 @@ htmlcov/
 .pytest_cache/
 
 # Documentation
-docs/
 
 venv/
+paper/

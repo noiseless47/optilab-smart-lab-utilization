@@ -74,15 +74,6 @@ A comprehensive **Database Management System (DBMS) project** that monitors comp
 
 ---
 
-## 🏗️ Architecture
-
-[docs/architecture_diagram.png](Architecture_Diagram)
-
----
-
-## 📊 Database Schema
-[docs/schema_diagram.png](Schema_Diagram)
-
 ---
 
 ## 🎓 DBMS Concepts Demonstrated
@@ -149,9 +140,9 @@ A comprehensive **Database Management System (DBMS) project** that monitors comp
 
 | Document | Description |
 |----------|-------------|
-| [docs/QUICKSTART.md](QUICKSTART.md) | 15-minute quick start 
-| [docs/SETUP.md](docs/SETUP.md) | Detailed installation 
-| [docs/DATABASE_DESIGN.md](docs/DATABASE_DESIGN.md) | Schema & design patterns 
+| [QUICKSTART.md](QUICKSTART.md) | 15-minute quick start 
+| [SETUP_CHECKLIST.md](SETUP_CHECKLIST.md) | Setup checklist 
+| [IMPLEMENTATION_SUMMARY.md](IMPLEMENTATION_SUMMARY.md) | Implementation details 
 
 
 ---
@@ -187,7 +178,7 @@ A comprehensive **Database Management System (DBMS) project** that monitors comp
 - **Enhanced Security**: Target systems only accept connections from bastion
 - **Complete Audit Trail**: All access logged through bastion
 - **Easy Configuration**: Enable/disable with single flag
-- **Documentation**: See [BASTION_HOST_SETUP.md](docs/BASTION_HOST_SETUP.md)
+- **Documentation**: See [SETUP_BASTION_HOST.md](SETUP_BASTION_HOST.md)
 
 ### Network Security
 - **Collector Isolation**: Single collector machine with network access
@@ -256,6 +247,6 @@ Information Science Department
 
 **Built with ❤️ using PostgreSQL, TimescaleDB, Python, and FastAPI**
 
-[Documentation](docs/) • [Setup Guide](docs/SETUP.md)
+[Quick Start](QUICKSTART.md) • [Setup Guide](SETUP_CHECKLIST.md) • [Implementation Summary](IMPLEMENTATION_SUMMARY.md)
 
 </div>
