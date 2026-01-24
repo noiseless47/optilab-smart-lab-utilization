@@ -226,7 +226,22 @@ class DepartmentModel {
     async getSystemByID(id) {
         this.validateID(id)
         const result = await this.query(
-            this.sql`SELECT * FROM systems WHERE system_id = ${id}`,
+            this.sql`
+                SELECT 
+                    s.*,
+                    CASE 
+                        WHEN m.last_metric_time IS NULL THEN 'unknown'
+                        WHEN m.last_metric_time < NOW() - INTERVAL '10 minutes' THEN 'offline'
+                        ELSE 'active'
+                    END as status
+                FROM systems s
+                LEFT JOIN (
+                    SELECT system_id, MAX(timestamp) as last_metric_time
+                    FROM metrics
+                    GROUP BY system_id
+                ) m ON s.system_id = m.system_id
+                WHERE s.system_id = ${id}
+            `,
             'Failed to get system'
         )
         return result[0] || null
@@ -234,7 +249,22 @@ class DepartmentModel {
 
     async getAllSystems() {
         return await this.query(
-            this.sql`SELECT * FROM systems ORDER BY hostname`,
+            this.sql`
+                SELECT 
+                    s.*,
+                    CASE 
+                        WHEN m.last_metric_time IS NULL THEN 'unknown'
+                        WHEN m.last_metric_time < NOW() - INTERVAL '10 minutes' THEN 'offline'
+                        ELSE 'active'
+                    END as status
+                FROM systems s
+                LEFT JOIN (
+                    SELECT system_id, MAX(timestamp) as last_metric_time
+                    FROM metrics
+                    GROUP BY system_id
+                ) m ON s.system_id = m.system_id
+                ORDER BY s.hostname
+            `,
             'Failed to get all systems'
         )
     }
@@ -242,7 +272,23 @@ class DepartmentModel {
     async getSystemsByLab(labID) {
         this.validateID(labID)
         return await this.query(
-            this.sql`SELECT * FROM systems WHERE lab_id = ${labID} ORDER BY system_number`,
+            this.sql`
+                SELECT 
+                    s.*,
+                    CASE 
+                        WHEN m.last_metric_time IS NULL THEN 'unknown'
+                        WHEN m.last_metric_time < NOW() - INTERVAL '10 minutes' THEN 'offline'
+                        ELSE 'active'
+                    END as status
+                FROM systems s
+                LEFT JOIN (
+                    SELECT system_id, MAX(timestamp) as last_metric_time
+                    FROM metrics
+                    GROUP BY system_id
+                ) m ON s.system_id = m.system_id
+                WHERE s.lab_id = ${labID}
+                ORDER BY s.system_number
+            `,
             'Failed to get systems'
         )
     }

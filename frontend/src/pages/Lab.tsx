@@ -78,6 +78,11 @@ export default function Lab() {
     navigate(`/departments/${deptId}/labs/${labId}/systems/${systemId}`)
   }
 
+  // Status is dynamically calculated based on last metrics timestamp
+  // - 'active': metrics received within last 10 minutes
+  // - 'offline': no metrics for 10+ minutes  
+  // - 'unknown': never sent metrics
+  // See docs/DYNAMIC_STATUS.md for details
   const getStatusColor = (status: string) => {
     switch (status?.toLowerCase()) {
       case 'active':
@@ -85,12 +90,14 @@ export default function Lab() {
         return 'bg-green-100 text-green-700'
       case 'offline':
         return 'bg-gray-100 text-gray-700'
+      case 'unknown':
+        return 'bg-blue-100 text-blue-700'
       case 'maintenance':
         return 'bg-yellow-100 text-yellow-700'
       case 'critical':
         return 'bg-red-100 text-red-700'
       default:
-        return 'bg-blue-100 text-blue-700'
+        return 'bg-gray-100 text-gray-700'
     }
   }
 

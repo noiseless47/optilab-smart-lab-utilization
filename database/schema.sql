@@ -475,6 +475,25 @@ FROM departments d
 LEFT JOIN systems s USING(dept_id)
 GROUP BY d.dept_id, d.dept_name;
 
+-- View: Systems with dynamic status based on last metric timestamp
+CREATE OR REPLACE VIEW v_systems_with_status AS
+SELECT 
+    s.*,
+    m.last_metric_time,
+    CASE 
+        WHEN m.last_metric_time IS NULL THEN 'unknown'
+        WHEN m.last_metric_time < NOW() - INTERVAL '10 minutes' THEN 'offline'
+        ELSE 'active'
+    END as computed_status
+FROM systems s
+LEFT JOIN (
+    SELECT system_id, MAX(timestamp) as last_metric_time
+    FROM metrics
+    GROUP BY system_id
+) m ON s.system_id = m.system_id;
+
+COMMENT ON VIEW v_systems_with_status IS 'Systems with dynamically computed status based on last metrics timestamp. A system is considered offline if no metrics received in last 10 minutes.';
+
 -- ============================================================================
 -- TRIGGERS & FUNCTIONS
 -- ============================================================================

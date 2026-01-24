@@ -27,9 +27,6 @@ export default function Navbar() {
             <NavLink to="/departments" active={isActive('/departments')} icon={<Building2 className="w-4 h-4" />}>
               Departments
             </NavLink>
-            <NavLink to="/systems" active={isActive('/systems')} icon={<Server className="w-4 h-4" />}>
-              Systems
-            </NavLink>
             <NavLink to="/analytics" active={isActive('/analytics')} icon={<BarChart3 className="w-4 h-4" />}>
               Analytics
             </NavLink>

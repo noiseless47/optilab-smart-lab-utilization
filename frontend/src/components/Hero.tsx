@@ -9,7 +9,7 @@ export default function Hero() {
   }
 
   const handleViewDocs = () => {
-    window.open('https://github.com/yourusername/optilab/blob/main/README.md', '_blank')
+    window.open('https://github.com/AP0827/optilab-smart-lab-utilization/tree/main/docs', '_blank')
   }
 
   return (
