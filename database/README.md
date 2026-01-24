@@ -1,15 +1,21 @@
 # Database Setup Guide
 
-This guide provides step-by-step instructions for setting up the OptiLab Smart Lab Utilization database system.
+This guide provides step-by-step instructions for setting up the OptiLab Smart Lab Utilization database system with **CFRS (Composite Fault Risk Score) support**.
 
 ## Overview
 
 The system uses PostgreSQL with TimescaleDB extension for time-series data optimization. The database consists of:
 
 - **Core Schema**: Department, lab, and system management
-- **Time-Series Metrics**: Performance monitoring data
+- **Time-Series Metrics**: Performance monitoring data with variance tracking
+- **System Baselines**: Statistical baselines for CFRS deviation component
 - **Maintenance Logs**: System maintenance tracking
-- **Performance Summaries**: Aggregated analytics
+- **Performance Summaries**: Aggregated analytics with STDDEV metrics
+- **CFRS Views**: Trend-friendly views for degradation detection
+
+**⚠️ Important:** The database prepares statistically correct inputs for CFRS but **does not compute CFRS scores**. CFRS computation happens in the application layer.
+
+See **[CFRS_DATABASE_SUPPORT.md](CFRS_DATABASE_SUPPORT.md)** for detailed CFRS integration documentation.
 
 ## Prerequisites
 
@@ -150,7 +156,7 @@ This will create:
 - Helper functions
 - Sample data
 
-### 4. Configure TimescaleDB
+### 4. Configure TimescaleDB (CFRS Support)
 
 Execute the TimescaleDB setup script:
 
@@ -161,17 +167,19 @@ psql -U postgres -d lab_resource_monitor -f database/setup_timescaledb.sql
 This will:
 - Enable TimescaleDB extension
 - Convert metrics table to hypertable
-- Set up compression policies
-- Create continuous aggregates for performance
-- Configure data retention
+- Set up compression policies (7 days)
+- Create continuous aggregates with **STDDEV metrics for CFRS variance component**
+- Configure data retention (30 days)
+- Create `system_baselines` table for CFRS deviation component
+- Create trend-friendly views (`v_daily_resource_trends`, `v_weekly_resource_trends`)
 
-### 5. Alternative TimescaleDB Setup
+**CFRS Changes:**
+- Hourly/daily aggregates now include `stddev_cpu_percent`, `stddev_ram_percent`, etc.
+- Removed unsafe time assumptions (no more `* 5 minutes` logic)
+- Added baseline storage for z-score deviation computation
+- Added views optimized for trend analysis / linear regression
 
-If you prefer the alternative setup:
-
-```bash
-psql -U postgres -d lab_resource_monitor -f database/timescale_setup.sql
-```
+See **[CFRS_DATABASE_SUPPORT.md](CFRS_DATABASE_SUPPORT.md)** for complete CFRS integration guide.
 
 ## Verification
 
@@ -197,6 +205,46 @@ psql -U postgres -d lab_resource_monitor -f database/health_check.sql
 ```
 
 This will provide a comprehensive status report of your database.
+
+## Migration Guide (Existing Databases)
+
+If you already have a database running and want to add CFRS support:
+
+### Option 1: Automated Migration Script
+
+```bash
+psql -U postgres -d lab_resource_monitor -f database/migrate_cfrs_support.sql
+psql -U postgres -d lab_resource_monitor -f database/setup_timescaledb.sql
+```
+
+This will:
+- Add STDDEV columns to `performance_summaries`
+- Remove unsafe/hardcoded columns
+- Create `system_baselines` table
+- Recreate continuous aggregates with variance metrics
+- Add CFRS trend views
+
+### Option 2: Manual Migration
+
+```sql
+-- 1. Add variance columns
+ALTER TABLE performance_summaries 
+ADD COLUMN IF NOT EXISTS stddev_cpu_percent NUMERIC(5,2),
+ADD COLUMN IF NOT EXISTS stddev_ram_percent NUMERIC(5,2),
+ADD COLUMN IF NOT EXISTS stddev_gpu_percent NUMERIC(5,2),
+ADD COLUMN IF NOT EXISTS stddev_disk_percent NUMERIC(5,2);
+
+-- 2. Remove hardcoded columns
+ALTER TABLE performance_summaries 
+DROP COLUMN IF EXISTS is_underutilized,
+DROP COLUMN IF EXISTS is_overutilized;
+
+-- 3. Create baselines table (see schema.sql or migrate_cfrs_support.sql)
+
+-- 4. Recreate continuous aggregates (see setup_timescaledb.sql)
+```
+
+See **[migrate_cfrs_support.sql](migrate_cfrs_support.sql)** for complete migration script.
 
 ## Sample Data
 
@@ -226,9 +274,10 @@ SELECT * FROM metrics LIMIT 10;
 | `systems` | Discovered computer systems |
 | `network_scans` | Network discovery scan history |
 | `collection_credentials` | Encrypted access credentials |
-| `metrics` | Time-series performance data |
+| `metrics` | Time-series performance data (hypertable) |
 | `maintenance_logs` | System maintenance records |
-| `performance_summaries` | Aggregated performance statistics |
+| `performance_summaries` | Aggregated statistics with STDDEV |
+| `system_baselines` | Statistical baselines for CFRS |
 
 ### Key Views
 
@@ -237,6 +286,8 @@ SELECT * FROM metrics LIMIT 10;
 | `v_systems_overview` | Systems with department info |
 | `v_latest_metrics` | Latest metrics per system |
 | `v_department_stats` | Department-level statistics |
+| `v_daily_resource_trends` | Daily trends for CFRS (trend component) |
+| `v_weekly_resource_trends` | Weekly aggregates for pattern analysis |
 
 ### TimescaleDB Features
 

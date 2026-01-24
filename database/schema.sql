@@ -11,6 +11,8 @@
 DROP VIEW IF EXISTS v_systems_overview CASCADE;
 DROP VIEW IF EXISTS v_latest_metrics CASCADE;
 DROP VIEW IF EXISTS v_department_stats CASCADE;
+DROP VIEW IF EXISTS v_daily_resource_trends CASCADE;
+DROP VIEW IF EXISTS v_weekly_resource_trends CASCADE;
 
 -- Drop continuous aggregates (TimescaleDB)
 DROP MATERIALIZED VIEW IF EXISTS hourly_performance_stats CASCADE;
@@ -26,6 +28,7 @@ DROP FUNCTION IF EXISTS get_systems_in_subnet(TEXT) CASCADE;
 DROP FUNCTION IF EXISTS count_active_systems_by_dept() CASCADE;
 
 -- Drop tables (in reverse dependency order)
+DROP TABLE IF EXISTS system_baselines CASCADE;
 DROP TABLE IF EXISTS performance_summaries CASCADE;
 DROP TABLE IF EXISTS maintainence_logs CASCADE;
 DROP TABLE IF EXISTS metrics CASCADE;
@@ -373,43 +376,79 @@ CREATE TABLE IF NOT EXISTS performance_summaries (
     avg_cpu_percent NUMERIC(5,2),
     max_cpu_percent NUMERIC(5,2),
     min_cpu_percent NUMERIC(5,2),
-    cpu_above_80_minutes INT,
+    stddev_cpu_percent NUMERIC(5,2),           -- Added for CFRS variance component
     
     -- RAM Statistics
     avg_ram_percent NUMERIC(5,2),
     max_ram_percent NUMERIC(5,2),
-    swap_used_minutes INT,
+    min_ram_percent NUMERIC(5,2),
+    stddev_ram_percent NUMERIC(5,2),           -- Added for CFRS variance component
     
     -- GPU Statistics
     avg_gpu_percent NUMERIC(5,2),
     max_gpu_percent NUMERIC(5,2),
+    min_gpu_percent NUMERIC(5,2),
+    stddev_gpu_percent NUMERIC(5,2),           -- Added for CFRS variance component
     
     -- Disk Statistics
-    avg_disk_io_wait NUMERIC(5,2),
-    total_disk_read_gb NUMERIC(12,2),
-    total_disk_write_gb NUMERIC(12,2),
+    avg_disk_percent NUMERIC(5,2),
+    max_disk_percent NUMERIC(5,2),
+    min_disk_percent NUMERIC(5,2),
+    stddev_disk_percent NUMERIC(5,2),          -- Added for CFRS variance component
     
     -- System Statistics
     uptime_minutes INT,
-    utilization_score NUMERIC(5,2),
     
-    -- Flags
-    is_underutilized BOOLEAN DEFAULT FALSE,
-    is_overutilized BOOLEAN DEFAULT FALSE,
+    -- Metadata
     anomaly_count INT DEFAULT 0,
+    metric_count INT,
     
     created_at TIMESTAMPTZ DEFAULT NOW(),
     
     UNIQUE(system_id, period_type, period_start)
 );
 
-COMMENT ON TABLE performance_summaries IS 'Aggregated performance statistics by time period';
+COMMENT ON TABLE performance_summaries IS 'Aggregated performance statistics by time period. Includes variance metrics for CFRS computation. No hardcoded thresholds.';
 
 CREATE INDEX idx_perf_summary_system_period ON performance_summaries(system_id, period_start DESC);
 CREATE INDEX idx_perf_summary_period_type ON performance_summaries(period_type, period_start DESC);
 
 -- ============================================================================
--- 10. OPTIMIZATION REPORTS
+-- 10. SYSTEM BASELINES (CFRS Support)
+-- ============================================================================
+
+-- Table to store statistical baselines for CFRS deviation component
+-- Stores mean/stddev for z-score computation outside the database
+CREATE TABLE IF NOT EXISTS system_baselines (
+    baseline_id SERIAL PRIMARY KEY,
+    system_id INT NOT NULL REFERENCES systems(system_id) ON DELETE CASCADE,
+    metric_name VARCHAR(50) NOT NULL,          -- 'cpu_percent', 'ram_percent', 'gpu_percent', 'disk_percent'
+    
+    -- Baseline Statistics
+    baseline_mean NUMERIC(10,4) NOT NULL,
+    baseline_stddev NUMERIC(10,4) NOT NULL,
+    baseline_median NUMERIC(10,4),
+    baseline_p95 NUMERIC(10,4),
+    
+    -- Baseline Computation Context
+    baseline_start TIMESTAMPTZ NOT NULL,
+    baseline_end TIMESTAMPTZ NOT NULL,
+    sample_count INT NOT NULL,
+    
+    -- Metadata
+    computed_at TIMESTAMPTZ DEFAULT NOW(),
+    is_active BOOLEAN DEFAULT TRUE,            -- Allow multiple baseline versions
+    
+    UNIQUE(system_id, metric_name, baseline_start, baseline_end)
+);
+
+COMMENT ON TABLE system_baselines IS 'Statistical baselines for CFRS deviation component. Stores mean/stddev for z-score computation. Does NOT compute CFRS internally.';
+
+CREATE INDEX idx_baselines_system_metric ON system_baselines(system_id, metric_name, is_active);
+CREATE INDEX idx_baselines_computed ON system_baselines(computed_at DESC);
+
+-- ============================================================================
+-- 11. OPTIMIZATION REPORTS
 -- ============================================================================
 
 -- CREATE TABLE IF NOT EXISTS optimization_reports (
@@ -493,6 +532,80 @@ LEFT JOIN (
 ) m ON s.system_id = m.system_id;
 
 COMMENT ON VIEW v_systems_with_status IS 'Systems with dynamically computed status based on last metrics timestamp. A system is considered offline if no metrics received in last 10 minutes.';
+
+-- ============================================================================
+-- CFRS SUPPORT VIEWS
+-- ============================================================================
+
+-- View: Daily resource trends for CFRS trend component
+-- Suitable for linear regression / slope analysis to detect long-term degradation
+CREATE OR REPLACE VIEW v_daily_resource_trends AS
+SELECT
+    system_id,
+    day_bucket::DATE as date,
+    day_bucket,
+    
+    -- CPU Trend Data
+    avg_cpu_percent,
+    stddev_cpu_percent,
+    max_cpu_percent,
+    
+    -- RAM Trend Data
+    avg_ram_percent,
+    stddev_ram_percent,
+    max_ram_percent,
+    
+    -- GPU Trend Data
+    avg_gpu_percent,
+    stddev_gpu_percent,
+    max_gpu_percent,
+    
+    -- Disk Trend Data
+    avg_disk_percent,
+    stddev_disk_percent,
+    max_disk_percent,
+    
+    -- Sample Quality
+    metric_count
+FROM daily_performance_stats
+ORDER BY system_id, day_bucket;
+
+COMMENT ON VIEW v_daily_resource_trends IS 'Daily resource utilization for trend analysis. Suitable for linear regression to compute degradation slopes. Part of CFRS trend component input.';
+
+-- View: Weekly rolling statistics for CFRS trend component
+-- Provides sliding window context for multi-day pattern analysis
+CREATE OR REPLACE VIEW v_weekly_resource_trends AS
+SELECT
+    system_id,
+    time_bucket('7 days', day_bucket) AS week_bucket,
+    
+    -- CPU Weekly Aggregates
+    AVG(avg_cpu_percent) AS avg_cpu_weekly,
+    STDDEV(avg_cpu_percent) AS stddev_cpu_weekly,
+    MAX(max_cpu_percent) AS peak_cpu_weekly,
+    
+    -- RAM Weekly Aggregates
+    AVG(avg_ram_percent) AS avg_ram_weekly,
+    STDDEV(avg_ram_percent) AS stddev_ram_weekly,
+    MAX(max_ram_percent) AS peak_ram_weekly,
+    
+    -- GPU Weekly Aggregates
+    AVG(avg_gpu_percent) AS avg_gpu_weekly,
+    STDDEV(avg_gpu_percent) AS stddev_gpu_weekly,
+    MAX(max_gpu_percent) AS peak_gpu_weekly,
+    
+    -- Disk Weekly Aggregates
+    AVG(avg_disk_percent) AS avg_disk_weekly,
+    STDDEV(avg_disk_percent) AS stddev_disk_weekly,
+    MAX(max_disk_percent) AS peak_disk_weekly,
+    
+    -- Sample Quality
+    SUM(metric_count) AS total_samples
+FROM daily_performance_stats
+GROUP BY system_id, week_bucket
+ORDER BY system_id, week_bucket;
+
+COMMENT ON VIEW v_weekly_resource_trends IS 'Weekly aggregated trends for multi-day pattern analysis. Supports CFRS trend component with longer time windows.';
 
 -- ============================================================================
 -- TRIGGERS & FUNCTIONS
