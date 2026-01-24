@@ -226,22 +226,7 @@ class DepartmentModel {
     async getSystemByID(id) {
         this.validateID(id)
         const result = await this.query(
-            this.sql`
-                SELECT 
-                    s.*,
-                    CASE 
-                        WHEN m.last_metric_time IS NULL THEN 'unknown'
-                        WHEN m.last_metric_time < NOW() - INTERVAL '10 minutes' THEN 'offline'
-                        ELSE 'active'
-                    END as status
-                FROM systems s
-                LEFT JOIN (
-                    SELECT system_id, MAX(timestamp) as last_metric_time
-                    FROM metrics
-                    GROUP BY system_id
-                ) m ON s.system_id = m.system_id
-                WHERE s.system_id = ${id}
-            `,
+            this.sql`SELECT * FROM systems WHERE system_id = ${id}`,
             'Failed to get system'
         )
         return result[0] || null
@@ -249,22 +234,7 @@ class DepartmentModel {
 
     async getAllSystems() {
         return await this.query(
-            this.sql`
-                SELECT 
-                    s.*,
-                    CASE 
-                        WHEN m.last_metric_time IS NULL THEN 'unknown'
-                        WHEN m.last_metric_time < NOW() - INTERVAL '10 minutes' THEN 'offline'
-                        ELSE 'active'
-                    END as status
-                FROM systems s
-                LEFT JOIN (
-                    SELECT system_id, MAX(timestamp) as last_metric_time
-                    FROM metrics
-                    GROUP BY system_id
-                ) m ON s.system_id = m.system_id
-                ORDER BY s.hostname
-            `,
+            this.sql`SELECT * FROM systems ORDER BY hostname`,
             'Failed to get all systems'
         )
     }
@@ -272,23 +242,7 @@ class DepartmentModel {
     async getSystemsByLab(labID) {
         this.validateID(labID)
         return await this.query(
-            this.sql`
-                SELECT 
-                    s.*,
-                    CASE 
-                        WHEN m.last_metric_time IS NULL THEN 'unknown'
-                        WHEN m.last_metric_time < NOW() - INTERVAL '10 minutes' THEN 'offline'
-                        ELSE 'active'
-                    END as status
-                FROM systems s
-                LEFT JOIN (
-                    SELECT system_id, MAX(timestamp) as last_metric_time
-                    FROM metrics
-                    GROUP BY system_id
-                ) m ON s.system_id = m.system_id
-                WHERE s.lab_id = ${labID}
-                ORDER BY s.system_number
-            `,
+            this.sql`SELECT * FROM systems WHERE lab_id = ${labID} ORDER BY system_number`,
             'Failed to get systems'
         )
     }
@@ -321,9 +275,23 @@ class DepartmentModel {
         this.validateRequired(message, 'message');
         this.validateRequired(date_at, 'date_at');
 
-        const query = this.sql`INSERT INTO maintainence_logs(system_id, date_at, is_acknowledged, acknowledged_at, acknowledged_by, resolved_at, severity, message) VALUES(${system_id}, ${date_at}, ${isACK}, ${ACKat}, ${ACKby}, ${resolved_at}, ${severity}, ${message}) RETURNING *`
-
-        return await this.query(query, 'Failed to add maintainence log')
+        // Insert maintenance log
+        const insertQuery = this.sql`
+            INSERT INTO maintainence_logs(system_id, date_at, is_acknowledged, acknowledged_at, acknowledged_by, resolved_at, severity, message) 
+            VALUES(${system_id}, ${date_at}, ${isACK}, ${ACKat}, ${ACKby}, ${resolved_at}, ${severity}, ${message}) 
+            RETURNING *
+        `
+        const result = await this.query(insertQuery, 'Failed to add maintainence log')
+        
+        // Update system status to 'maintenance'
+        const updateStatusQuery = this.sql`
+            UPDATE systems 
+            SET status = 'maintenance', updated_at = NOW()
+            WHERE system_id = ${system_id}
+        `
+        await this.query(updateStatusQuery, 'Failed to update system status')
+        
+        return result
     }
     
     async getMaintainenceByLabID(lab_id) {
@@ -373,8 +341,10 @@ class DepartmentModel {
         const fields = Object.keys(updates).filter(key => updates[key] !== undefined)
         if (fields.length === 0) throw new Error('No fields to update')
 
+        // If resolved_at is being set, we need to update system status
+        const isBeingResolved = updates.resolved_at !== undefined && updates.resolved_at !== null
+
         // Build dynamic SQL query using the sql template
-        // We'll use string literals for field names and parameterized values for data
         let query = 'UPDATE maintainence_logs SET '
         const values = []
         const setClauses = []
@@ -390,6 +360,13 @@ class DepartmentModel {
         
         try {
             const result = await this.sql.unsafe(query, values)
+            const maintenanceLog = Array.isArray(result) ? result[0] : result
+            
+            // If maintenance is being resolved, update system status based on recent metrics
+            if (isBeingResolved && maintenanceLog && maintenanceLog.system_id) {
+                await this.restoreSystemStatus(maintenanceLog.system_id)
+            }
+            
             return Array.isArray(result) ? result : [result]
         } catch (error) {
             console.error('Failed to update maintainence log', error.message)
@@ -398,13 +375,46 @@ class DepartmentModel {
         }
     }
 
+    // Helper function to restore system status after maintenance
+    async restoreSystemStatus(system_id) {
+        this.validateID(system_id)
+        // Check if system has recent metrics (within last 10 minutes)
+        const statusQuery = this.sql`
+            UPDATE systems s
+            SET status = CASE 
+                WHEN m.last_metric_time IS NOT NULL AND m.last_metric_time >= NOW() - INTERVAL '10 minutes' THEN 'active'
+                ELSE 'offline'
+            END,
+            updated_at = NOW()
+            FROM (
+                SELECT system_id, MAX(timestamp) as last_metric_time
+                FROM metrics
+                WHERE system_id = ${system_id}
+                GROUP BY system_id
+            ) m
+            WHERE s.system_id = m.system_id AND s.system_id = ${system_id}
+        `
+        await this.query(statusQuery, 'Failed to restore system status')
+    }
+
     async deleteMaintainence(maintainence_id) {
         this.validateID(maintainence_id)
+        // Get system_id before deleting
+        const getSystemQuery = this.sql`SELECT system_id FROM maintainence_logs WHERE maintainence_id = ${maintainence_id}`
+        const logResult = await this.query(getSystemQuery, 'Failed to get maintenance log')
+        
         const query = this.sql`DELETE FROM maintainence_logs WHERE maintainence_id = ${maintainence_id}`
-        return await this.query(
+        const result = await this.query(
             query,
             'Failed to delete maintainence log'
         )
+        
+        // Restore system status after deletion
+        if (logResult && logResult[0] && logResult[0].system_id) {
+            await this.restoreSystemStatus(logResult[0].system_id)
+        }
+        
+        return result
     }
 
     async getMaintainenceBySystemID(system_id) {

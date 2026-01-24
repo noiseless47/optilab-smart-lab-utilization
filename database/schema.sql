@@ -516,6 +516,57 @@ CREATE TRIGGER trg_systems_updated_at
     BEFORE UPDATE ON systems
     FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
+-- Function to update system status based on last metrics
+CREATE OR REPLACE FUNCTION update_system_status()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- Only update status if not in maintenance
+    IF (SELECT status FROM systems WHERE system_id = NEW.system_id) != 'maintenance' THEN
+        UPDATE systems 
+        SET status = 'active', updated_at = NOW()
+        WHERE system_id = NEW.system_id;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Trigger to mark system as active when metrics are inserted
+CREATE TRIGGER trg_metrics_update_status
+    AFTER INSERT ON metrics
+    FOR EACH ROW
+    EXECUTE FUNCTION update_system_status();
+
+COMMENT ON FUNCTION update_system_status() IS 'Automatically updates system status to active when metrics are received, unless system is in maintenance mode';
+
+-- Function to mark systems as offline if no metrics in last 10 minutes
+-- This should be called periodically (e.g., via cron job or pg_cron)
+CREATE OR REPLACE FUNCTION mark_systems_offline()
+RETURNS TABLE(system_id INT, hostname VARCHAR, old_status VARCHAR, new_status VARCHAR) AS $$
+BEGIN
+    RETURN QUERY
+    UPDATE systems s
+    SET status = 'offline', updated_at = NOW()
+    FROM (
+        SELECT sys.system_id, sys.hostname, sys.status as old_status
+        FROM systems sys
+        LEFT JOIN (
+            SELECT m.system_id, MAX(m.timestamp) as last_metric_time
+            FROM metrics m
+            GROUP BY m.system_id
+        ) recent_metrics ON sys.system_id = recent_metrics.system_id
+        WHERE sys.status NOT IN ('maintenance')
+        AND (
+            recent_metrics.last_metric_time IS NULL 
+            OR recent_metrics.last_metric_time < NOW() - INTERVAL '10 minutes'
+        )
+        AND sys.status != 'offline'
+    ) offline_systems
+    WHERE s.system_id = offline_systems.system_id
+    RETURNING s.system_id, s.hostname, offline_systems.old_status, s.status as new_status;
+END;
+$$ LANGUAGE plpgsql;
+
+COMMENT ON FUNCTION mark_systems_offline() IS 'Marks systems as offline if no metrics received in last 10 minutes. Should be run periodically (every 5-10 minutes). Does not affect systems in maintenance mode.';
 
 -- ============================================================================
 -- HELPER FUNCTIONS
