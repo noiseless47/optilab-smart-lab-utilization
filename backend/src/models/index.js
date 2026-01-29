@@ -13,6 +13,10 @@ class User {
   }
 }
 
+// CFRS Model
+const CFRSModel = require('./cfrs_models');
+
 module.exports = {
   User,
+  CFRSModel,
 };
