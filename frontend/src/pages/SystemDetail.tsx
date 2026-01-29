@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Server, Cpu, HardDrive, Activity, Network, Plus, BarChart3, TrendingUp } from 'lucide-react'
+import { ArrowLeft, Server, Cpu, HardDrive, Activity, Network, Plus, BarChart3, TrendingUp, Zap } from 'lucide-react'
 import { Line } from 'react-chartjs-2'
 import {
   Chart as ChartJS,
@@ -16,6 +16,7 @@ import {
 import Modal from '../components/Modal'
 import Toast, { ToastMessage } from '../components/Toast'
 import Loading from '../components/Loading'
+import CFRSMetricsViewer from '../components/CFRSMetricsViewer'
 import api from '../lib/api'
 
 ChartJS.register(
@@ -93,7 +94,7 @@ export default function SystemDetail() {
   const [toasts, setToasts] = useState<ToastMessage[]>([])
   
   // Toggle states for Live vs Aggregate and view type
-  const [metricsMode, setMetricsMode] = useState<'live' | 'aggregate'>('live')
+  const [metricsMode, setMetricsMode] = useState<'live' | 'aggregate' | 'cfrs'>('live')
   const [viewType, setViewType] = useState<'graphs' | 'numeric'>('graphs')
   
   const [maintenanceForm, setMaintenanceForm] = useState({
@@ -367,7 +368,7 @@ export default function SystemDetail() {
         <h2 className="text-2xl font-bold text-gray-900">Performance Metrics</h2>
         
         <div className="flex items-center space-x-6">
-          {/* Mode Toggle: Live vs Aggregate */}
+          {/* Mode Toggle: Live vs Aggregate vs CFRS */}
           <div className="flex items-center space-x-2 bg-gray-100 rounded-lg p-1">
             <button
               onClick={() => setMetricsMode('live')}
@@ -390,6 +391,17 @@ export default function SystemDetail() {
             >
               <BarChart3 className="w-4 h-4 inline mr-2" />
               Aggregate
+            </button>
+            <button
+              onClick={() => setMetricsMode('cfrs')}
+              className={`px-4 py-2 rounded-md font-medium transition ${
+                metricsMode === 'cfrs'
+                  ? 'bg-white text-yellow-600 shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              <Zap className="w-4 h-4 inline mr-2" />
+              CFRS
             </button>
           </div>
 
@@ -451,7 +463,10 @@ export default function SystemDetail() {
       </div>
 
       {/* Metrics Visualization */}
-      {metricsMode === 'live' ? (
+      {metricsMode === 'cfrs' ? (
+        // CFRS METRICS SECTION
+        <CFRSMetricsViewer systemId={systemId || ''} />
+      ) : metricsMode === 'live' ? (
         // LIVE METRICS SECTION
         metrics.length > 0 ? (
           <>

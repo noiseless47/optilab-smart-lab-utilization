@@ -354,6 +354,157 @@ class MetricsModel {
             throw new Error('Invalid aggregate type. Must be "hourly" or "daily"')
         }
     }
+
+    // CFRS METRICS OPERATIONS -----------------------------------------------------------------
+    // Get CFRS-relevant metrics for verification and visualization
+
+    async getCFRSMetrics(systemID, hours = 24) {
+        this.validateID(systemID)
+        
+        // Fetch raw CFRS metrics from the metrics table
+        return await this.query(
+            this.sql`
+                SELECT
+                    timestamp,
+                    cpu_iowait_percent,
+                    context_switch_rate,
+                    swap_out_rate,
+                    major_page_fault_rate,
+                    cpu_temperature,
+                    gpu_temperature,
+                    swap_in_rate,
+                    page_fault_rate,
+                    cpu_percent,
+                    ram_percent,
+                    disk_percent
+                FROM metrics
+                WHERE system_id = ${systemID}
+                AND timestamp >= NOW() - (${hours}::integer || ' hours')::interval
+                ORDER BY timestamp DESC
+            `,
+            'Failed to get CFRS metrics'
+        )
+    }
+
+    async getCFRSHourlyStats(systemID, hours = 24) {
+        this.validateID(systemID)
+        
+        // Check if cfrs_hourly_stats exists, otherwise return empty array
+        try {
+            return await this.query(
+                this.sql`
+                    SELECT
+                        hour_bucket as timestamp,
+                        -- Tier-1 metrics (Primary CFRS drivers)
+                        avg_cpu_iowait,
+                        stddev_cpu_iowait,
+                        p95_cpu_iowait,
+                        cnt_cpu_iowait,
+                        avg_context_switch,
+                        stddev_context_switch,
+                        p95_context_switch,
+                        cnt_context_switch,
+                        avg_swap_out,
+                        stddev_swap_out,
+                        p95_swap_out,
+                        cnt_swap_out,
+                        avg_major_page_faults,
+                        stddev_major_page_faults,
+                        p95_major_page_faults,
+                        cnt_major_page_faults,
+                        avg_cpu_temp,
+                        stddev_cpu_temp,
+                        p95_cpu_temp,
+                        cnt_cpu_temp,
+                        avg_gpu_temp,
+                        stddev_gpu_temp,
+                        p95_gpu_temp,
+                        cnt_gpu_temp,
+                        -- Tier-2 metrics (Secondary contributors)
+                        avg_cpu_percent,
+                        stddev_cpu_percent,
+                        p95_cpu_percent,
+                        cnt_cpu_percent,
+                        avg_ram_percent,
+                        stddev_ram_percent,
+                        p95_ram_percent,
+                        cnt_ram_percent,
+                        avg_disk_percent,
+                        stddev_disk_percent,
+                        p95_disk_percent,
+                        cnt_disk_percent,
+                        avg_swap_in,
+                        stddev_swap_in,
+                        p95_swap_in,
+                        cnt_swap_in,
+                        avg_page_faults,
+                        stddev_page_faults,
+                        p95_page_faults,
+                        cnt_page_faults,
+                        total_samples
+                    FROM cfrs_hourly_stats
+                    WHERE system_id = ${systemID}
+                    AND hour_bucket >= NOW() - (${hours}::integer || ' hours')::interval
+                    ORDER BY hour_bucket DESC
+                `,
+                'Failed to get CFRS hourly stats'
+            )
+        } catch (error) {
+            // If cfrs_hourly_stats doesn't exist, return empty array
+            console.log('CFRS hourly stats not available:', error.message)
+            return []
+        }
+    }
+
+    async getLatestCFRSMetrics(systemID) {
+        this.validateID(systemID)
+        
+        const result = await this.query(
+            this.sql`
+                SELECT
+                    timestamp,
+                    cpu_iowait_percent,
+                    context_switch_rate,
+                    swap_out_rate,
+                    major_page_fault_rate,
+                    cpu_temperature,
+                    gpu_temperature,
+                    swap_in_rate,
+                    page_fault_rate,
+                    cpu_percent,
+                    ram_percent,
+                    disk_percent
+                FROM metrics
+                WHERE system_id = ${systemID}
+                ORDER BY timestamp DESC
+                LIMIT 1
+            `,
+            'Failed to get latest CFRS metrics'
+        )
+        return result[0] || null
+    }
+
+    async getCFRSMetricsSummary(systemID, hours = 24) {
+        this.validateID(systemID)
+        
+        const [latest, rawMetrics, hourlyStats] = await Promise.all([
+            this.getLatestCFRSMetrics(systemID),
+            this.getCFRSMetrics(systemID, hours),
+            this.getCFRSHourlyStats(systemID, hours)
+        ])
+
+        return {
+            system_id: systemID,
+            latest_cfrs_metrics: latest,
+            raw_cfrs_metrics: rawMetrics,
+            hourly_cfrs_stats: hourlyStats,
+            summary: {
+                total_samples: rawMetrics.length,
+                hours_analyzed: hours,
+                has_cfrs_aggregates: hourlyStats.length > 0
+            }
+        }
+    }
 }
 
 module.exports = MetricsModel

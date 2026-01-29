@@ -7,15 +7,84 @@ This guide provides step-by-step instructions for setting up the OptiLab Smart L
 The system uses PostgreSQL with TimescaleDB extension for time-series data optimization. The database consists of:
 
 - **Core Schema**: Department, lab, and system management
-- **Time-Series Metrics**: Performance monitoring data with variance tracking
-- **System Baselines**: Statistical baselines for CFRS deviation component
-- **Maintenance Logs**: System maintenance tracking
-- **Performance Summaries**: Aggregated analytics with STDDEV metrics
-- **CFRS Views**: Trend-friendly views for degradation detection
+- **Time-Series Metrics**: Performance monitoring data (11 Tier-1 + Tier-2 metrics)
+- **CFRS Statistical Layer**: Continuous aggregates exposing deviation, variance, and trend inputs
+- **Baseline Storage**: Statistical baselines for z-score normalization
+- **Trend Views**: Regression-ready daily/weekly aggregates
 
-**⚠️ Important:** The database prepares statistically correct inputs for CFRS but **does not compute CFRS scores**. CFRS computation happens in the application layer.
+**⚠️ Important:** The database provides **statistically correct derivative inputs** for CFRS but **does not compute CFRS scores**. CFRS computation happens in the application layer (by design).
 
-See **[CFRS_DATABASE_SUPPORT.md](CFRS_DATABASE_SUPPORT.md)** for detailed CFRS integration documentation.
+## 📚 Documentation Structure
+
+| Document | Purpose | When to Use |
+|----------|---------|-------------|
+| **[CFRS_TIMESCALEDB_DOCUMENTATION.md](CFRS_TIMESCALEDB_DOCUMENTATION.md)** | Complete CFRS layer reference | Deep dive into CFRS statistical architecture |
+| **[cfrs_timescale_layer.sql](cfrs_timescale_layer.sql)** | Production SQL implementation | Deploy CFRS layer to database |
+| **[migrate_to_cfrs_layer.sql](migrate_to_cfrs_layer.sql)** | Migration script | Upgrade existing database to CFRS |
+| **[cfrs_query_cookbook.sql](cfrs_query_cookbook.sql)** | Ready-to-use query examples | Copy-paste queries for CFRS components |
+| **[schema.sql](schema.sql)** | Core database schema | Base table definitions |
+| **[setup_timescaledb.sql](setup_timescaledb.sql)** | Hypertable + compression setup | Convert metrics to hypertable |
+| **[CFRS_METRICS_IMPLEMENTATION.md](CFRS_METRICS_IMPLEMENTATION.md)** | Advanced metrics details | Understand Tier-1/Tier-2 metrics |
+
+## 🎯 Quick Start
+
+### Option A: New Database with CFRS (Recommended)
+
+```bash
+# 1. Create database
+createdb optilab_cfrs
+
+# 2. Deploy core schema
+psql -d optilab_cfrs -f database/schema.sql
+
+# 3. Setup hypertable
+psql -d optilab_cfrs -c "SELECT create_hypertable('metrics', 'timestamp', if_not_exists => TRUE);"
+
+# 4. Deploy CFRS statistical layer
+psql -d optilab_cfrs -f database/cfrs_timescale_layer.sql
+
+# 5. Verify
+psql -d optilab_cfrs -c "SELECT view_name FROM timescaledb_information.continuous_aggregates;"
+```
+
+### Option B: Migrate Existing Database to CFRS
+
+```bash
+# 1. Backup first!
+pg_dump -d optilab_mvp > backup_$(date +%Y%m%d).sql
+
+# 2. Run migration
+psql -d optilab_mvp -f database/migrate_to_cfrs_layer.sql
+
+# 3. Verify
+psql -d optilab_mvp -c "SELECT COUNT(*) FROM cfrs_hourly_stats;"
+```
+
+## 🧱 CFRS Component Mapping
+
+### What the Database Provides
+
+| CFRS Component | Database Outputs | External Application Computes |
+|----------------|------------------|------------------------------|
+| **Deviation (D)** | Baseline mean/stddev, Current hour/day averages | `z = (current - mean) / stddev` |
+| **Variance (V)** | STDDEV per metric per hour/day, P95 percentiles | `CV = stddev / mean`, Volatility scores |
+| **Trend (S)** | Daily averages + epoch timestamps | `REGR_SLOPE(metric, time)`, Degradation rates |
+
+### Tier-1 Metrics (Primary CFRS Drivers)
+
+- `cpu_iowait_percent` - I/O bottleneck indicator
+- `context_switch_rate` - System thrashing indicator
+- `swap_out_rate` - Memory pressure critical
+- `major_page_fault_rate` - Storage latency spike
+- `cpu_temperature` - Thermal stress
+- `gpu_temperature` - GPU cooling degradation
+
+### Tier-2 Metrics (Secondary Contributors)
+
+- `cpu_percent`, `ram_percent`, `disk_percent` - Utilization metrics
+- `swap_in_rate`, `page_fault_rate` - Memory patterns
+
+See **[CFRS_TIMESCALEDB_DOCUMENTATION.md](CFRS_TIMESCALEDB_DOCUMENTATION.md)** for complete metric definitions.
 
 ## Prerequisites
 

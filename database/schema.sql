@@ -219,6 +219,14 @@ CREATE TABLE IF NOT EXISTS metrics (
     gpu_memory_used_gb NUMERIC(10,2),
     gpu_temperature NUMERIC(5,2),
     
+    -- CFRS-Relevant Advanced Metrics
+    cpu_iowait_percent NUMERIC(5,2),           -- CPU time waiting for I/O
+    context_switch_rate BIGINT,                -- Context switches per second
+    swap_in_rate NUMERIC(10,2),                -- Swap pages in per second
+    swap_out_rate NUMERIC(10,2),               -- Swap pages out per second
+    page_fault_rate NUMERIC(10,2),             -- Page faults per second
+    major_page_fault_rate NUMERIC(10,2),       -- Major page faults per second
+    
     -- System Metrics
     uptime_seconds BIGINT,
     logged_in_users INT,
