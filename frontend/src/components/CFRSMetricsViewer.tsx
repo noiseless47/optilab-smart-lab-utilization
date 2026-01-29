@@ -40,8 +40,8 @@ export default function CFRSMetricsViewer({ systemId }: CFRSViewerProps) {
       setError(null)
       
       const [metricsRes, latestRes] = await Promise.all([
-        api.get(`/api/systems/${systemId}/metrics/cfrs?hours=${timeRange}`),
-        api.get(`/api/systems/${systemId}/metrics/cfrs/latest`)
+        api.get(`/systems/${systemId}/metrics/cfrs?hours=${timeRange}`),
+        api.get(`/systems/${systemId}/metrics/cfrs/latest`)
       ])
       
       setMetrics(metricsRes.data)
@@ -54,16 +54,20 @@ export default function CFRSMetricsViewer({ systemId }: CFRSViewerProps) {
     }
   }
 
-  const formatValue = (value: number | undefined | null, decimals: number = 2): string => {
+  const formatValue = (value: number | string | undefined | null, decimals: number = 2): string => {
     if (value === null || value === undefined) return 'N/A'
-    return value.toFixed(decimals)
+    const numValue = typeof value === 'string' ? parseFloat(value) : value
+    if (isNaN(numValue)) return 'N/A'
+    return numValue.toFixed(decimals)
   }
 
-  const formatLargeNumber = (value: number | undefined | null): string => {
+  const formatLargeNumber = (value: number | string | undefined | null): string => {
     if (value === null || value === undefined) return 'N/A'
-    if (value >= 1000000) return `${(value / 1000000).toFixed(2)}M`
-    if (value >= 1000) return `${(value / 1000).toFixed(2)}K`
-    return value.toFixed(0)
+    const numValue = typeof value === 'string' ? parseFloat(value) : value
+    if (isNaN(numValue)) return 'N/A'
+    if (numValue >= 1000000) return `${(numValue / 1000000).toFixed(2)}M`
+    if (numValue >= 1000) return `${(numValue / 1000).toFixed(2)}K`
+    return numValue.toFixed(0)
   }
 
   const createChartData = (label: string, dataKey: keyof CFRSMetric, color: string) => {
