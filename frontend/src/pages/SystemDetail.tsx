@@ -19,6 +19,7 @@ import Loading from '../components/Loading'
 import CFRSMetricsViewer from '../components/CFRSMetricsViewer'
 import CFRSScoreDisplay from '../components/CFRSScoreDisplay'
 import api from '../lib/api'
+import { useSystemData, useSystemMetrics, useAggregateMetrics } from '../hooks/useSystemData'
 
 // Helper function to safely format numbers (handles both strings and numbers from DB)
 const safeToFixed = (value: any, decimals: number = 1): string => {
@@ -106,19 +107,20 @@ export default function SystemDetail() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   
-  const [system, setSystem] = useState<System | null>(null)
-  const [metrics, setMetrics] = useState<Metric[]>([])
-  const [aggregateMetrics, setAggregateMetrics] = useState<AggregateMetric[]>([])
-  const [loading, setLoading] = useState(true)
-  const [showMaintenanceModal, setShowMaintenanceModal] = useState(false)
-  const [toasts, setToasts] = useState<ToastMessage[]>([])
-  
   // Toggle states for Live vs Aggregate and view type
-  // Check URL params to set initial view mode
   const initialView = searchParams.get('view')
   const [metricsMode, setMetricsMode] = useState<'live' | 'aggregate' | 'cfrs'>(
     initialView === 'aggregate' ? 'aggregate' : initialView === 'cfrs' ? 'cfrs' : 'live'
   )
+  
+  const { data: system, isLoading: loadingSystem } = useSystemData(deptId || '', labId || '', systemId || '')
+  const { data: metrics = [], isLoading: loadingMetrics } = useSystemMetrics(deptId || '', labId || '', systemId || '', 24, metricsMode === 'live')
+  const { data: aggregateMetrics = [], isLoading: loadingAggregate } = useAggregateMetrics(deptId || '', labId || '', systemId || '', 'hourly')
+  
+  const loading = loadingSystem || (metricsMode === 'live' && loadingMetrics) || (metricsMode === 'aggregate' && loadingAggregate)
+  const [showMaintenanceModal, setShowMaintenanceModal] = useState(false)
+  const [toasts, setToasts] = useState<ToastMessage[]>([])
+  
   const [viewType, setViewType] = useState<'graphs' | 'numeric'>('graphs')
   
   const [maintenanceForm, setMaintenanceForm] = useState({
@@ -135,38 +137,7 @@ export default function SystemDetail() {
     setToasts(prev => prev.filter(t => t.id !== id))
   }
 
-  useEffect(() => {
-    if (systemId) {
-      fetchSystemData()
-    }
-  }, [systemId])
-
-  const fetchSystemData = async () => {
-    try {
-      setLoading(true)
-      // First get all systems in the lab, then find the specific one
-      const [labSystemsRes, metricsRes, aggregateRes] = await Promise.all([
-        api.get(`/departments/${deptId}/labs/${labId}/systems`),
-        api.get(`/departments/${deptId}/labs/${labId}/${systemId}/metrics`, { params: { hours: 24, limit: 100 } }),
-        api.get(`/departments/${deptId}/labs/${labId}/${systemId}/metrics/aggregate`, { params: { type: 'hourly' } }).catch(() => ({ data: [] }))
-      ])
-      
-      // Find the specific system from the lab's systems
-      const system = labSystemsRes.data.find((s: any) => s.system_id === parseInt(systemId || '0'))
-      if (!system) {
-        throw new Error('System not found')
-      }
-      
-      setSystem(system)
-      setMetrics(metricsRes.data.reverse())
-      setAggregateMetrics(aggregateRes.data || [])
-    } catch (error) {
-      console.error('Failed to fetch system data:', error)
-      addToast('Failed to load system data', 'error')
-    } finally {
-      setLoading(false)
-    }
-  }
+  // Removed manual fetchSystemData useEffect and function
 
   const handleAddToMaintenance = async () => {
     if (!maintenanceForm.message.trim()) {

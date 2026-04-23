@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { Activity, TrendingUp, BarChart3, AlertTriangle, CheckCircle, XCircle, Info } from 'lucide-react'
 import api from '../lib/api'
 import Loading from './Loading'
+import { useCFRSScore, useCFRSBaselines } from '../hooks/useCFRSData'
 
 interface CFRSScore {
   system_id: number
@@ -64,46 +65,21 @@ interface CFRSScoreDisplayProps {
 }
 
 export default function CFRSScoreDisplay({ systemId }: CFRSScoreDisplayProps) {
-  const [cfrsScore, setCfrsScore] = useState<CFRSScore | null>(null)
-  const [baselines, setBaselines] = useState<Baseline[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [computingBaselines, setComputingBaselines] = useState(false)
 
-  useEffect(() => {
-    fetchCFRSData()
-  }, [systemId])
+  const { data: cfrsScore, isLoading: loadingScore, error: scoreError, refetch: refetchScore } = useCFRSScore(systemId)
+  const { data: baselines = [], isLoading: loadingBaselines, refetch: refetchBaselines } = useCFRSBaselines(systemId)
 
-  const fetchCFRSData = async () => {
-    try {
-      setLoading(true)
-      setError(null)
-
-      // Fetch CFRS score and baselines in parallel
-      const [scoreRes, baselinesRes] = await Promise.all([
-        api.get(`/systems/${systemId}/cfrs/score`).catch(() => null),
-        api.get(`/systems/${systemId}/cfrs/baselines`).catch(() => ({ data: [] }))
-      ])
-
-      if (scoreRes && scoreRes.data) {
-        setCfrsScore(scoreRes.data)
-      }
-      setBaselines(baselinesRes.data || [])
-    } catch (err: any) {
-      console.error('Failed to fetch CFRS data:', err)
-      setError(err.response?.data?.error || 'Failed to load CFRS data')
-    } finally {
-      setLoading(false)
-    }
-  }
+  const loading = loadingScore || loadingBaselines
+  const error = scoreError ? (scoreError as any).response?.data?.error || 'Failed to load CFRS data' : null
 
   const computeBaselines = async () => {
     try {
       setComputingBaselines(true)
       await api.post(`/systems/${systemId}/cfrs/baselines/compute`)
-      await fetchCFRSData()
+      await Promise.all([refetchScore(), refetchBaselines()])
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to compute baselines')
+      console.error('Failed to compute baselines', err)
     } finally {
       setComputingBaselines(false)
     }
