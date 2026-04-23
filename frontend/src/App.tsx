@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
 import Navbar from './components/Navbar'
 import Hero from './components/Hero'
 import Dashboard from './components/Dashboard'
@@ -9,6 +9,7 @@ import Departments from './pages/Departments'
 import DepartmentDetail from './pages/DepartmentDetail'
 import Lab from './pages/Lab'
 import SystemDetail from './pages/SystemDetail'
+import Systems from './pages/Systems'
 import MaintenanceLogs from './pages/MaintenanceLogs'
 
 function App() {
@@ -26,9 +27,10 @@ function App() {
           <Route path="/departments" element={<Departments />} />
           <Route path="/departments/:deptId" element={<DepartmentDetail />} />
           <Route path="/departments/:deptId/maintenance" element={<MaintenanceLogs />} />
+          <Route path="/systems" element={<Systems />} />
           <Route path="/departments/:deptId/labs/:labId" element={<Lab />} />
           <Route path="/departments/:deptId/labs/:labId/systems/:systemId" element={<SystemDetail />} />
-          <Route path="/analytics" element={<Analytics />} />
+          <Route path="/analytics" element={<Navigate to="/departments/1/labs/1/systems/1?view=aggregate" replace />} />
           <Route path="/alerts" element={<Alerts />} />
         </Routes>
       </div>

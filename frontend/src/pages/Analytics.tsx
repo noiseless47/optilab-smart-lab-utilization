@@ -68,6 +68,15 @@ export default function Analytics() {
 
       const aggregatedResults = await Promise.all(aggregatedPromises)
       
+      // Debug: Log first result to see data structure
+      if (aggregatedResults.length > 0) {
+        console.log('First system data:', aggregatedResults[0])
+        console.log('Data array length:', aggregatedResults[0].data.length)
+        if (aggregatedResults[0].data.length > 0) {
+          console.log('First data item:', aggregatedResults[0].data[0])
+        }
+      }
+      
       // Process aggregated data
       const systemsWithMetrics: SystemWithMetrics[] = []
       let allAggregatedData: AggregatedMetrics[] = []
@@ -81,7 +90,7 @@ export default function Analytics() {
             lab_id: result.lab_id,
             cpu: parseFloat(latestData.avg_cpu_percent) || 0,
             memory: parseFloat(latestData.avg_ram_percent) || 0,
-            disk: parseFloat(latestData.avg_disk_io_wait) || 0,
+            disk: parseFloat(latestData.avg_disk_percent) || 0,
             gpu: parseFloat(latestData.avg_gpu_percent) || 0,
             p95_cpu: parseFloat(latestData.p95_cpu_percent) || 0,
             p95_ram: parseFloat(latestData.p95_ram_percent) || 0

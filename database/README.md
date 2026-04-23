@@ -20,7 +20,6 @@ The system uses PostgreSQL with TimescaleDB extension for time-series data optim
 |----------|---------|-------------|
 | **[CFRS_TIMESCALEDB_DOCUMENTATION.md](CFRS_TIMESCALEDB_DOCUMENTATION.md)** | Complete CFRS layer reference | Deep dive into CFRS statistical architecture |
 | **[cfrs_timescale_layer.sql](cfrs_timescale_layer.sql)** | Production SQL implementation | Deploy CFRS layer to database |
-| **[migrate_to_cfrs_layer.sql](migrate_to_cfrs_layer.sql)** | Migration script | Upgrade existing database to CFRS |
 | **[cfrs_query_cookbook.sql](cfrs_query_cookbook.sql)** | Ready-to-use query examples | Copy-paste queries for CFRS components |
 | **[schema.sql](schema.sql)** | Core database schema | Base table definitions |
 | **[setup_timescaledb.sql](setup_timescaledb.sql)** | Hypertable + compression setup | Convert metrics to hypertable |

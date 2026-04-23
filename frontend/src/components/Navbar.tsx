@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom'
-import { Server, Activity, AlertCircle, BarChart3, Building2 } from 'lucide-react'
+import { Server, Activity, AlertCircle, BarChart3, Building2, Monitor } from 'lucide-react'
 
 export default function Navbar() {
   const location = useLocation()
@@ -26,6 +26,9 @@ export default function Navbar() {
             </NavLink>
             <NavLink to="/departments" active={isActive('/departments')} icon={<Building2 className="w-4 h-4" />}>
               Departments
+            </NavLink>
+            <NavLink to="/systems" active={isActive('/systems')} icon={<Monitor className="w-4 h-4" />}>
+              Systems
             </NavLink>
             <NavLink to="/analytics" active={isActive('/analytics')} icon={<BarChart3 className="w-4 h-4" />}>
               Analytics

@@ -1,143 +1,322 @@
 import { useState, useMemo, useEffect } from 'react'
-import { Search, Filter, Server, Clock, X, ChevronDown, ArrowUpDown, Check } from 'lucide-react'
+import { Search, Filter, Server, X, ChevronDown, ArrowUpDown, Check } from 'lucide-react'
 import Modal from '../components/Modal'
 import Loading from '../components/Loading'
 import api from '../lib/api'
 
-type SortOption = 'name' | 'status' | 'cpu-high' | 'cpu-low' | 'memory-high' | 'memory-low' | 'uptime'
+type SortOption = 'name' | 'status' | 'department' | 'lab'
+
+interface SystemRow {
+  system_id: number
+  system_number?: number | null
+  hostname: string
+  ip_address: string
+  mac_address?: string | null
+  lab_id?: number | null
+  dept_id?: number | null
+  status: string
+  cpu_model?: string | null
+  cpu_cores?: number | null
+  ram_total_gb?: number | null
+  disk_total_gb?: number | null
+  gpu_model?: string | null
+  gpu_memory?: number | null
+  ssh_port?: number | null
+  created_at?: string | null
+  updated_at?: string | null
+}
+
+interface Department {
+  dept_id: number
+  dept_name: string
+  dept_code?: string
+}
+
+interface Lab {
+  lab_id: number
+  lab_number: number
+  lab_dept: number
+}
 
 export default function Systems() {
   const [searchQuery, setSearchQuery] = useState('')
   const [showFilters, setShowFilters] = useState(false)
   const [showSort, setShowSort] = useState(false)
   const [sortBy, setSortBy] = useState<SortOption>('name')
-  const [selectedSystem, setSelectedSystem] = useState<{
-    name: string
-    lab: string
-    ip: string
-    status: string
-    cpu: number
-    memory: number
-    uptime: string
-  } | null>(null)
-  
-  // Filter states
+
+  const [selectedSystem, setSelectedSystem] = useState<SystemRow | null>(null)
   const [statusFilters, setStatusFilters] = useState<string[]>([])
   const [labFilters, setLabFilters] = useState<string[]>([])
-  const [cpuRange, setCpuRange] = useState<[number, number]>([0, 100])
-  const [memoryRange, setMemoryRange] = useState<[number, number]>([0, 100])
+  const [departmentFilters, setDepartmentFilters] = useState<string[]>([])
 
-  const handleFilterClick = () => {
-    setShowFilters(!showFilters)
-  }
+  const [systems, setSystems] = useState<SystemRow[]>([])
+  const [discoveredSystems, setDiscoveredSystems] = useState<SystemRow[]>([])
+  const [departments, setDepartments] = useState<Department[]>([])
+  const [labsByDept, setLabsByDept] = useState<Record<number, Lab[]>>({})
 
-  const toggleStatusFilter = (status: string) => {
-    setStatusFilters(prev =>
-      prev.includes(status) ? prev.filter(s => s !== status) : [...prev, status]
-    )
-  }
+  const [assignTarget, setAssignTarget] = useState<SystemRow | null>(null)
+  const [assignDeptId, setAssignDeptId] = useState<number | ''>('')
+  const [assignLabId, setAssignLabId] = useState<number | ''>('')
+  const [assignLoading, setAssignLoading] = useState(false)
 
-  const toggleLabFilter = (lab: string) => {
-    setLabFilters(prev =>
-      prev.includes(lab) ? prev.filter(l => l !== lab) : [...prev, lab]
-    )
-  }
-
-  const clearAllFilters = () => {
-    setStatusFilters([])
-    setLabFilters([])
-    setCpuRange([0, 100])
-    setMemoryRange([0, 100])
-  }
-
-  const applyFilters = () => {
-    setShowFilters(false)
-  }
-
-  const activeFilterCount = statusFilters.length + labFilters.length
-
-  const [allSystems, setAllSystems] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [systemsWithMetrics, setSystemsWithMetrics] = useState<any[]>([])
+  const [actionMessage, setActionMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
   useEffect(() => {
     fetchSystems()
   }, [])
 
+  const getDeptLabel = (deptId?: number | null) => {
+    if (!deptId) return 'Unknown'
+    const dept = departments.find((d) => d.dept_id === deptId)
+    if (!dept) return `Dept ${deptId}`
+    return dept.dept_code || dept.dept_name
+  }
+
+  const getLabLabel = (system: { lab_id?: number | null; dept_id?: number | null }) => {
+    if (!system.lab_id) return 'Unassigned'
+    const deptId = system.dept_id || 0
+    const labs = labsByDept[deptId] || []
+    const lab = labs.find((item) => item.lab_id === system.lab_id)
+    if (!lab) return `Lab ${system.lab_id}`
+    return `${getDeptLabel(deptId)} Lab ${lab.lab_number}`
+  }
+
+  const formatDateTime = (value?: string | null) => {
+    if (!value) return 'N/A'
+    const dt = new Date(value)
+    if (Number.isNaN(dt.getTime())) return value
+    return dt.toLocaleString()
+  }
+
   const fetchSystems = async () => {
     try {
       setLoading(true)
       setError(null)
-      // Since there's no unified /systems endpoint, show demo data
-      // In production, aggregate from all departments and labs
-      const systemsData: any[] = []
-      setSystemsWithMetrics(systemsData)
-      setAllSystems(systemsData)
-    } catch (error: any) {
-      console.error('Failed to fetch systems:', error)
-      setError(error.response?.data?.error || 'Failed to load systems')
+      setActionMessage(null)
+
+      const [systemsRes, discoveredRes, departmentsRes] = await Promise.all([
+        api.get('/systems/all'),
+        api.get('/systems/discovered'),
+        api.get('/departments'),
+      ])
+
+      const systemsData = Array.isArray(systemsRes.data) ? systemsRes.data : []
+      const discoveredData = Array.isArray(discoveredRes.data) ? discoveredRes.data : []
+      const departmentsData = Array.isArray(departmentsRes.data) ? departmentsRes.data : []
+      setDepartments(departmentsData)
+
+      const deptLabPairs = await Promise.all(
+        departmentsData.map(async (dept: Department) => {
+          try {
+            const labsRes = await api.get(`/departments/${dept.dept_id}/labs`)
+            return [dept.dept_id, Array.isArray(labsRes.data) ? labsRes.data : []] as [number, Lab[]]
+          } catch {
+            return [dept.dept_id, []] as [number, Lab[]]
+          }
+        })
+      )
+
+      const labMap: Record<number, Lab[]> = {}
+      deptLabPairs.forEach(([deptId, labs]) => {
+        labMap[deptId] = labs
+      })
+      setLabsByDept(labMap)
+
+      setSystems(systemsData)
+      setDiscoveredSystems(discoveredData)
+    } catch (fetchError: any) {
+      console.error('Failed to fetch systems:', fetchError)
+      setError(fetchError.response?.data?.error || 'Failed to load systems')
     } finally {
       setLoading(false)
     }
   }
 
-  const formatUptime = (seconds: number) => {
-    const hours = Math.floor(seconds / 3600)
-    const minutes = Math.floor((seconds % 3600) / 60)
-    return `${hours}h ${minutes}m`
-  }
+  const schemaStatuses = useMemo(() => {
+    const values = new Set<string>()
+    systems.forEach((system) => {
+      if (system.status) values.add(system.status)
+    })
+    return Array.from(values)
+  }, [systems])
 
-  // Sort systems
+  const departmentOptions = useMemo(() => {
+    const names = new Set<string>()
+    systems.forEach((system) => names.add(getDeptLabel(system.dept_id)))
+    return Array.from(names).sort((a, b) => a.localeCompare(b))
+  }, [systems, departments])
+
+  const labOptions = useMemo(() => {
+    const labels = new Set<string>()
+    systems.forEach((system) => labels.add(getLabLabel(system)))
+    return Array.from(labels).sort((a, b) => a.localeCompare(b))
+  }, [systems, departments, labsByDept])
+
+  const visibleSystems = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase()
+
+    return systems.filter((system) => {
+      const deptLabel = getDeptLabel(system.dept_id)
+      const labLabel = getLabLabel(system)
+
+      const statusPass = statusFilters.length === 0 || statusFilters.includes(system.status)
+      const deptPass = departmentFilters.length === 0 || departmentFilters.includes(deptLabel)
+      const labPass = labFilters.length === 0 || labFilters.includes(labLabel)
+
+      const searchPass =
+        query.length === 0 ||
+        system.hostname?.toLowerCase().includes(query) ||
+        system.ip_address?.toLowerCase().includes(query) ||
+        (system.mac_address || '').toLowerCase().includes(query) ||
+        (system.cpu_model || '').toLowerCase().includes(query) ||
+        (system.gpu_model || '').toLowerCase().includes(query) ||
+        deptLabel.toLowerCase().includes(query) ||
+        labLabel.toLowerCase().includes(query)
+
+      return statusPass && deptPass && labPass && searchPass
+    })
+  }, [systems, searchQuery, statusFilters, departmentFilters, labFilters, departments, labsByDept])
+
   const sortedSystems = useMemo(() => {
-    const systems = [...systemsWithMetrics]
-    const statusOrder = { critical: 0, warning: 1, offline: 2, online: 3, active: 3, discovered: 4 }
+    const list = [...visibleSystems]
 
     switch (sortBy) {
       case 'name':
-        return systems.sort((a, b) => a.hostname.localeCompare(b.hostname))
+        return list.sort((a, b) => a.hostname.localeCompare(b.hostname))
       case 'status':
-        return systems.sort((a, b) => statusOrder[a.status as keyof typeof statusOrder] - statusOrder[b.status as keyof typeof statusOrder])
-      case 'cpu-high':
-        return systems.sort((a, b) => b.cpu - a.cpu)
-      case 'cpu-low':
-        return systems.sort((a, b) => a.cpu - b.cpu)
-      case 'memory-high':
-        return systems.sort((a, b) => b.memory - a.memory)
-      case 'memory-low':
-        return systems.sort((a, b) => a.memory - b.memory)
-      case 'uptime':
-        return systems.sort((a, b) => b.uptimeMinutes - a.uptimeMinutes)
+        return list.sort((a, b) => a.status.localeCompare(b.status))
+      case 'department':
+        return list.sort((a, b) => getDeptLabel(a.dept_id).localeCompare(getDeptLabel(b.dept_id)))
+      case 'lab':
+        return list.sort((a, b) => getLabLabel(a).localeCompare(getLabLabel(b)))
       default:
-        return systems
+        return list
     }
-  }, [sortBy, systemsWithMetrics])
+  }, [visibleSystems, sortBy, departments, labsByDept])
+
+  const toggleStatusFilter = (status: string) => {
+    setStatusFilters((prev) => (prev.includes(status) ? prev.filter((s) => s !== status) : [...prev, status]))
+  }
+
+  const toggleDepartmentFilter = (dept: string) => {
+    setDepartmentFilters((prev) => (prev.includes(dept) ? prev.filter((d) => d !== dept) : [...prev, dept]))
+  }
+
+  const toggleLabFilter = (lab: string) => {
+    setLabFilters((prev) => (prev.includes(lab) ? prev.filter((l) => l !== lab) : [...prev, lab]))
+  }
+
+  const clearAllFilters = () => {
+    setStatusFilters([])
+    setDepartmentFilters([])
+    setLabFilters([])
+  }
 
   const handleSortChange = (option: SortOption) => {
     setSortBy(option)
     setShowSort(false)
   }
 
+  const openAssignModal = (system: SystemRow) => {
+    setAssignTarget(system)
+    const initialDept = system.dept_id || departments[0]?.dept_id || ''
+    setAssignDeptId(initialDept)
+
+    if (initialDept) {
+      const labs = labsByDept[initialDept] || []
+      setAssignLabId(labs[0]?.lab_id || '')
+    } else {
+      setAssignLabId('')
+    }
+  }
+
+  const handleAssign = async () => {
+    if (!assignTarget || !assignLabId) {
+      setActionMessage({ type: 'error', text: 'Please select a lab before assigning.' })
+      return
+    }
+
+    try {
+      setAssignLoading(true)
+      await api.patch(`/systems/${assignTarget.system_id}/assign-lab`, { lab_id: Number(assignLabId) })
+      setActionMessage({ type: 'success', text: `${assignTarget.hostname} assigned successfully.` })
+      setAssignTarget(null)
+      await fetchSystems()
+    } catch (assignError: any) {
+      console.error('Failed to assign lab:', assignError)
+      setActionMessage({
+        type: 'error',
+        text: assignError.response?.data?.error || 'Failed to assign discovered system to lab',
+      })
+    } finally {
+      setAssignLoading(false)
+    }
+  }
+
+  const assignDeptLabs = assignDeptId ? labsByDept[assignDeptId] || [] : []
+  const activeFilterCount = statusFilters.length + departmentFilters.length + labFilters.length
+
   return (
     <div className="max-w-7xl mx-auto px-6 py-12">
       <div className="mb-8">
         <h1 className="text-4xl font-bold text-gray-900 mb-2">Systems</h1>
-        <p className="text-gray-600">Monitor and manage all lab systems</p>
+        <p className="text-gray-600">Static system inventory from the database</p>
       </div>
 
-      {/* Search and Filter */}
+      {error && <div className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4 text-red-700 text-sm font-medium">{error}</div>}
+
+      {actionMessage && (
+        <div
+          className={`mb-6 rounded-lg p-4 text-sm font-medium ${
+            actionMessage.type === 'success'
+              ? 'border border-green-200 bg-green-50 text-green-700'
+              : 'border border-red-200 bg-red-50 text-red-700'
+          }`}
+        >
+          {actionMessage.text}
+        </div>
+      )}
+
+      <div className="card mb-8 p-6">
+        <h2 className="text-lg font-semibold text-gray-900 mb-2">Discovered Systems Queue</h2>
+        <p className="text-sm text-gray-600 mb-4">Newly discovered systems appear here first. Assign each one to a lab.</p>
+
+        {discoveredSystems.length === 0 ? (
+          <div className="rounded-md border border-dashed border-gray-300 p-4 text-sm text-gray-500">No pending discovered systems.</div>
+        ) : (
+          <div className="space-y-3">
+            {discoveredSystems.map((system) => (
+              <div key={system.system_id} className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 rounded-lg border border-gray-200 p-4">
+                <div>
+                  <div className="font-semibold text-gray-900">{system.hostname}</div>
+                  <div className="text-sm text-gray-600">
+                    {system.ip_address} | {getDeptLabel(system.dept_id)}
+                  </div>
+                </div>
+                <button onClick={() => openAssignModal(system)} className="btn-primary">
+                  Assign To Lab
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       <div className="flex items-center space-x-4 mb-8">
         <div className="flex-1 relative">
           <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
           <input
             type="text"
-            placeholder="Search systems by name, lab, or IP..."
+            placeholder="Search by hostname, IP, MAC, CPU model, GPU model..."
             className="w-full pl-12 pr-4 py-3.5 bg-white border-2 border-gray-200 rounded-lg text-sm font-medium text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-100 transition-all hover:border-gray-300 shadow-sm"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
         </div>
-        <button onClick={handleFilterClick} className="btn-secondary flex items-center space-x-2 relative">
+
+        <button onClick={() => setShowFilters(!showFilters)} className="btn-secondary flex items-center space-x-2 relative">
           <Filter className="w-4 h-4" />
           <span>Filters</span>
           {activeFilterCount > 0 && (
@@ -146,11 +325,9 @@ export default function Systems() {
             </span>
           )}
         </button>
+
         <div className="relative">
-          <button
-            onClick={() => setShowSort(!showSort)}
-            className="btn-secondary flex items-center space-x-2"
-          >
+          <button onClick={() => setShowSort(!showSort)} className="btn-secondary flex items-center space-x-2">
             <ArrowUpDown className="w-4 h-4" />
             <span>Sort</span>
           </button>
@@ -161,12 +338,9 @@ export default function Systems() {
               </div>
               {[
                 { value: 'name' as SortOption, label: 'Name (A-Z)' },
-                { value: 'status' as SortOption, label: 'Status (Priority)' },
-                { value: 'cpu-high' as SortOption, label: 'CPU Usage (High to Low)' },
-                { value: 'cpu-low' as SortOption, label: 'CPU Usage (Low to High)' },
-                { value: 'memory-high' as SortOption, label: 'Memory Usage (High to Low)' },
-                { value: 'memory-low' as SortOption, label: 'Memory Usage (Low to High)' },
-                { value: 'uptime' as SortOption, label: 'Uptime (Longest First)' },
+                { value: 'status' as SortOption, label: 'Status' },
+                { value: 'department' as SortOption, label: 'Department' },
+                { value: 'lab' as SortOption, label: 'Lab' },
               ].map((option) => (
                 <button
                   key={option.value}
@@ -190,16 +364,16 @@ export default function Systems() {
           <div className="text-3xl font-bold text-gray-900">{sortedSystems.length}</div>
         </div>
         <div className="card p-6">
-          <div className="text-sm text-gray-500 mb-1">Online</div>
-          <div className="text-3xl font-bold text-green-600">{sortedSystems.filter(s => s.status === 'active' || s.status === 'online').length}</div>
-        </div>
-        <div className="card p-6">
-          <div className="text-sm text-gray-500 mb-1">Warnings</div>
-          <div className="text-3xl font-bold text-yellow-600">{sortedSystems.filter(s => s.cpu > 80 || s.memory > 80).length}</div>
+          <div className="text-sm text-gray-500 mb-1">Active</div>
+          <div className="text-3xl font-bold text-green-600">{sortedSystems.filter((s) => s.status === 'active').length}</div>
         </div>
         <div className="card p-6">
           <div className="text-sm text-gray-500 mb-1">Offline</div>
-          <div className="text-3xl font-bold text-gray-600">{sortedSystems.filter(s => s.status === 'offline').length}</div>
+          <div className="text-3xl font-bold text-gray-600">{sortedSystems.filter((s) => s.status === 'offline').length}</div>
+        </div>
+        <div className="card p-6">
+          <div className="text-sm text-gray-500 mb-1">Discovered</div>
+          <div className="text-3xl font-bold text-blue-600">{discoveredSystems.length}</div>
         </div>
       </div>
 
@@ -211,16 +385,15 @@ export default function Systems() {
               <X className="w-5 h-5" />
             </button>
           </div>
-          
+
           <div className="p-6 space-y-6">
-            {/* Status Filter */}
             <div>
               <h4 className="font-medium text-gray-900 mb-3 flex items-center justify-between">
-                System Status
+                Status
                 <ChevronDown className="w-4 h-4 text-gray-400" />
               </h4>
               <div className="space-y-2.5">
-                {['critical', 'warning', 'online', 'offline'].map((status) => (
+                {schemaStatuses.map((status) => (
                   <label key={status} className="flex items-center space-x-3 cursor-pointer group p-2 rounded-lg hover:bg-gray-50 transition-all">
                     <div className="relative">
                       <input
@@ -230,15 +403,10 @@ export default function Systems() {
                         className="sr-only peer"
                       />
                       <div className="w-5 h-5 border-2 border-gray-300 rounded peer-checked:border-primary-500 peer-checked:bg-primary-500 transition-all duration-200 flex items-center justify-center group-hover:border-primary-400">
-                        {statusFilters.includes(status) && (
-                          <Check className="w-3.5 h-3.5 text-white" strokeWidth={3} />
-                        )}
+                        {statusFilters.includes(status) && <Check className="w-3.5 h-3.5 text-white" strokeWidth={3} />}
                       </div>
                     </div>
                     <span className="text-sm font-medium text-gray-700 group-hover:text-gray-900 capitalize flex-1">{status}</span>
-                    <span className="text-xs font-semibold text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
-                      {status === 'critical' ? '1' : status === 'warning' ? '1' : status === 'online' ? '3' : '1'}
-                    </span>
                   </label>
                 ))}
               </div>
@@ -246,14 +414,40 @@ export default function Systems() {
 
             <div className="border-t border-gray-200"></div>
 
-            {/* Lab Filter */}
             <div>
               <h4 className="font-medium text-gray-900 mb-3 flex items-center justify-between">
-                Lab Location
+                Department
                 <ChevronDown className="w-4 h-4 text-gray-400" />
               </h4>
-              <div className="space-y-2.5">
-                {['ISE Lab 1', 'ISE Lab 3', 'CSE Lab 1', 'CSE Lab 4', 'ECE Lab 2', 'ECE Lab 3'].map((lab) => (
+              <div className="space-y-2.5 max-h-52 overflow-y-auto pr-1">
+                {departmentOptions.map((dept) => (
+                  <label key={dept} className="flex items-center space-x-3 cursor-pointer group p-2 rounded-lg hover:bg-gray-50 transition-all">
+                    <div className="relative">
+                      <input
+                        type="checkbox"
+                        checked={departmentFilters.includes(dept)}
+                        onChange={() => toggleDepartmentFilter(dept)}
+                        className="sr-only peer"
+                      />
+                      <div className="w-5 h-5 border-2 border-gray-300 rounded peer-checked:border-primary-500 peer-checked:bg-primary-500 transition-all duration-200 flex items-center justify-center group-hover:border-primary-400">
+                        {departmentFilters.includes(dept) && <Check className="w-3.5 h-3.5 text-white" strokeWidth={3} />}
+                      </div>
+                    </div>
+                    <span className="text-sm font-medium text-gray-700 group-hover:text-gray-900 flex-1">{dept}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <div className="border-t border-gray-200"></div>
+
+            <div>
+              <h4 className="font-medium text-gray-900 mb-3 flex items-center justify-between">
+                Lab
+                <ChevronDown className="w-4 h-4 text-gray-400" />
+              </h4>
+              <div className="space-y-2.5 max-h-52 overflow-y-auto pr-1">
+                {labOptions.map((lab) => (
                   <label key={lab} className="flex items-center space-x-3 cursor-pointer group p-2 rounded-lg hover:bg-gray-50 transition-all">
                     <div className="relative">
                       <input
@@ -263,231 +457,132 @@ export default function Systems() {
                         className="sr-only peer"
                       />
                       <div className="w-5 h-5 border-2 border-gray-300 rounded peer-checked:border-primary-500 peer-checked:bg-primary-500 transition-all duration-200 flex items-center justify-center group-hover:border-primary-400">
-                        {labFilters.includes(lab) && (
-                          <Check className="w-3.5 h-3.5 text-white" strokeWidth={3} />
-                        )}
+                        {labFilters.includes(lab) && <Check className="w-3.5 h-3.5 text-white" strokeWidth={3} />}
                       </div>
                     </div>
                     <span className="text-sm font-medium text-gray-700 group-hover:text-gray-900 flex-1">{lab}</span>
-                    <span className="text-xs font-semibold text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">1</span>
                   </label>
                 ))}
               </div>
             </div>
-
-            <div className="border-t border-gray-200"></div>
-
-            {/* CPU Usage Range */}
-            <div>
-              <h4 className="font-medium text-gray-900 mb-3">CPU Usage Range</h4>
-              <div className="space-y-3">
-                <div className="flex items-center space-x-3">
-                  <div className="flex-1 flex items-center space-x-2">
-                    <input
-                      type="number"
-                      value={cpuRange[0]}
-                      onChange={(e) => setCpuRange([parseInt(e.target.value) || 0, cpuRange[1]])}
-                      className="w-full px-4 py-2.5 bg-white border-2 border-gray-200 rounded-lg text-sm font-medium text-gray-900 focus:outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-100 transition-all hover:border-gray-300 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                      placeholder="Min"
-                      min="0"
-                      max="100"
-                    />
-                    <span className="text-sm font-semibold text-gray-500">%</span>
-                  </div>
-                  <div className="text-gray-400 font-medium">to</div>
-                  <div className="flex-1 flex items-center space-x-2">
-                    <input
-                      type="number"
-                      value={cpuRange[1]}
-                      onChange={(e) => setCpuRange([cpuRange[0], parseInt(e.target.value) || 100])}
-                      className="w-full px-4 py-2.5 bg-white border-2 border-gray-200 rounded-lg text-sm font-medium text-gray-900 focus:outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-100 transition-all hover:border-gray-300 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                      placeholder="Max"
-                      min="0"
-                      max="100"
-                    />
-                    <span className="text-sm font-semibold text-gray-500">%</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="border-t border-gray-200"></div>
-
-            {/* Memory Usage Range */}
-            <div>
-              <h4 className="font-medium text-gray-900 mb-3">Memory Usage Range</h4>
-              <div className="space-y-3">
-                <div className="flex items-center space-x-3">
-                  <div className="flex-1 flex items-center space-x-2">
-                    <input
-                      type="number"
-                      value={memoryRange[0]}
-                      onChange={(e) => setMemoryRange([parseInt(e.target.value) || 0, memoryRange[1]])}
-                      className="w-full px-4 py-2.5 bg-white border-2 border-gray-200 rounded-lg text-sm font-medium text-gray-900 focus:outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-100 transition-all hover:border-gray-300 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                      placeholder="Min"
-                      min="0"
-                      max="100"
-                    />
-                    <span className="text-sm font-semibold text-gray-500">%</span>
-                  </div>
-                  <div className="text-gray-400 font-medium">to</div>
-                  <div className="flex-1 flex items-center space-x-2">
-                    <input
-                      type="number"
-                      value={memoryRange[1]}
-                      onChange={(e) => setMemoryRange([memoryRange[0], parseInt(e.target.value) || 100])}
-                      className="w-full px-4 py-2.5 bg-white border-2 border-gray-200 rounded-lg text-sm font-medium text-gray-900 focus:outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-100 transition-all hover:border-gray-300 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                      placeholder="Max"
-                      min="0"
-                      max="100"
-                    />
-                    <span className="text-sm font-semibold text-gray-500">%</span>
-                  </div>
-                </div>
-              </div>
-            </div>
           </div>
 
-          {/* Filter Actions */}
           <div className="bg-gray-50 px-6 py-4 border-t border-gray-200 flex items-center justify-between">
-            <button
-              onClick={clearAllFilters}
-              className="text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors"
-            >
+            <button onClick={clearAllFilters} className="text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors">
               Clear All
             </button>
-            <div className="flex items-center space-x-3">
-              <button
-                onClick={() => setShowFilters(false)}
-                className="px-4 py-2 text-sm font-medium text-gray-700 hover:text-gray-900 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={applyFilters}
-                className="px-6 py-2 bg-gradient-to-r from-primary-500 to-primary-600 text-white text-sm font-semibold rounded-lg hover:from-primary-600 hover:to-primary-700 transition-all duration-200 shadow-md"
-              >
-                Apply Filters
-              </button>
-            </div>
+            <button onClick={() => setShowFilters(false)} className="btn-secondary">
+              Close
+            </button>
           </div>
         </div>
       )}
 
-      {/* Systems Grid */}
       {loading ? (
         <Loading text="Loading systems..." />
       ) : sortedSystems.length === 0 ? (
         <div className="card p-12 text-center">
           <Server className="w-16 h-16 text-gray-300 mx-auto mb-4" />
           <h3 className="text-xl font-semibold text-gray-900 mb-2">No Systems Found</h3>
-          <p className="text-gray-600">No systems have been discovered yet.</p>
+          <p className="text-gray-600">No system records are available.</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {sortedSystems.map((system) => (
             <SystemCard
               key={system.system_id}
-              name={system.hostname}
-              lab={`Lab ${system.lab_id || 'N/A'}`}
-              ip={system.ip_address}
-              status={system.status}
-              cpu={system.cpu}
-              memory={system.memory}
-              uptime={system.uptime}
-              onViewDetails={() => setSelectedSystem({
-                name: system.hostname,
-                lab: `Lab ${system.lab_id || 'N/A'}`,
-                ip: system.ip_address,
-                status: system.status,
-                cpu: system.cpu,
-                memory: system.memory,
-                uptime: system.uptime
-              })}
+              system={system}
+              lab={getLabLabel(system)}
+              department={getDeptLabel(system.dept_id)}
+              onViewDetails={() => setSelectedSystem(system)}
+              onAssignToLab={() => openAssignModal(system)}
             />
           ))}
         </div>
       )}
 
-      {/* System Details Modal */}
-      <Modal
-        isOpen={selectedSystem !== null}
-        onClose={() => setSelectedSystem(null)}
-        title="System Details"
-        size="lg"
-      >
+      <Modal isOpen={selectedSystem !== null} onClose={() => setSelectedSystem(null)} title="System Details" size="lg">
         {selectedSystem && (
-          <div className="space-y-6">
-            {/* System Info */}
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="text-sm font-medium text-gray-500">System Name</label>
-                <p className="text-lg font-semibold text-gray-900 mt-1">{selectedSystem.name}</p>
-              </div>
-              <div>
-                <label className="text-sm font-medium text-gray-500">Lab Location</label>
-                <p className="text-lg font-semibold text-gray-900 mt-1">{selectedSystem.lab}</p>
-              </div>
-              <div>
-                <label className="text-sm font-medium text-gray-500">IP Address</label>
-                <p className="text-lg font-mono font-semibold text-gray-900 mt-1">{selectedSystem.ip}</p>
-              </div>
-              <div>
-                <label className="text-sm font-medium text-gray-500">Status</label>
-                <p className="text-lg font-semibold text-gray-900 mt-1 capitalize">{selectedSystem.status}</p>
-              </div>
+          <div className="space-y-5">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <DetailRow label="Hostname" value={selectedSystem.hostname} />
+              <DetailRow label="Status" value={selectedSystem.status} capitalize />
+              <DetailRow label="Department" value={getDeptLabel(selectedSystem.dept_id)} />
+              <DetailRow label="Lab" value={getLabLabel(selectedSystem)} />
+              <DetailRow label="IP Address" value={selectedSystem.ip_address} mono />
+              <DetailRow label="MAC Address" value={selectedSystem.mac_address || 'N/A'} mono />
+              <DetailRow label="System Number" value={selectedSystem.system_number?.toString() || 'N/A'} />
+              <DetailRow label="SSH Port" value={selectedSystem.ssh_port?.toString() || 'N/A'} />
+              <DetailRow label="CPU Model" value={selectedSystem.cpu_model || 'N/A'} />
+              <DetailRow label="CPU Cores" value={selectedSystem.cpu_cores?.toString() || 'N/A'} />
+              <DetailRow label="RAM Total" value={selectedSystem.ram_total_gb != null ? `${selectedSystem.ram_total_gb} GB` : 'N/A'} />
+              <DetailRow label="Disk Total" value={selectedSystem.disk_total_gb != null ? `${selectedSystem.disk_total_gb} GB` : 'N/A'} />
+              <DetailRow label="GPU Model" value={selectedSystem.gpu_model || 'N/A'} />
+              <DetailRow label="GPU Memory" value={selectedSystem.gpu_memory != null ? `${selectedSystem.gpu_memory} GB` : 'N/A'} />
+              <DetailRow label="Created At" value={formatDateTime(selectedSystem.created_at)} />
+              <DetailRow label="Updated At" value={formatDateTime(selectedSystem.updated_at)} />
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      <Modal isOpen={assignTarget !== null} onClose={() => setAssignTarget(null)} title="Assign Discovered System" size="md">
+        {assignTarget && (
+          <div className="space-y-5">
+            <div className="rounded-lg bg-gray-50 border border-gray-200 p-4">
+              <p className="text-sm text-gray-600">System</p>
+              <p className="font-semibold text-gray-900">{assignTarget.hostname}</p>
+              <p className="text-sm text-gray-600">{assignTarget.ip_address}</p>
             </div>
 
-            {/* Resource Usage */}
-            <div className="space-y-4">
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <label className="text-sm font-medium text-gray-500">CPU Usage</label>
-                  <span className="text-lg font-bold text-gray-900">{selectedSystem.cpu}%</span>
-                </div>
-                <div className="w-full bg-gray-100 rounded-full h-3">
-                  <div
-                    className={`h-3 rounded-full transition-all ${
-                      selectedSystem.cpu > 80 ? 'bg-red-500' : selectedSystem.cpu > 60 ? 'bg-yellow-500' : 'bg-green-500'
-                    }`}
-                    style={{ width: `${selectedSystem.cpu}%` }}
-                  ></div>
-                </div>
-              </div>
-
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <label className="text-sm font-medium text-gray-500">Memory Usage</label>
-                  <span className="text-lg font-bold text-gray-900">{selectedSystem.memory}%</span>
-                </div>
-                <div className="w-full bg-gray-100 rounded-full h-3">
-                  <div
-                    className={`h-3 rounded-full transition-all ${
-                      selectedSystem.memory > 80 ? 'bg-red-500' : selectedSystem.memory > 60 ? 'bg-yellow-500' : 'bg-green-500'
-                    }`}
-                    style={{ width: `${selectedSystem.memory}%` }}
-                  ></div>
-                </div>
-              </div>
-            </div>
-
-            {/* Uptime */}
             <div>
-              <label className="text-sm font-medium text-gray-500">Uptime</label>
-              <p className="text-lg font-semibold text-gray-900 mt-1">{selectedSystem.uptime}</p>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Department</label>
+              <select
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                value={assignDeptId}
+                onChange={(e) => {
+                  const deptValue = Number(e.target.value) || ''
+                  setAssignDeptId(deptValue)
+                  if (deptValue) {
+                    const deptLabs = labsByDept[deptValue] || []
+                    setAssignLabId(deptLabs[0]?.lab_id || '')
+                  } else {
+                    setAssignLabId('')
+                  }
+                }}
+              >
+                <option value="">Select department</option>
+                {departments.map((dept) => (
+                  <option key={dept.dept_id} value={dept.dept_id}>
+                    {dept.dept_code || dept.dept_name}
+                  </option>
+                ))}
+              </select>
             </div>
 
-            {/* Action Buttons */}
-            <div className="flex justify-end pt-4 border-t border-gray-200">
-              <button
-                onClick={() => {
-                  console.log('SSH to system:', selectedSystem.name)
-                  setSelectedSystem(null)
-                  // Implement SSH connection logic
-                }}
-                className="px-6 py-3 bg-gradient-to-r from-primary-500 to-primary-600 text-white font-semibold rounded-lg hover:from-primary-600 hover:to-primary-700 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Lab</label>
+              <select
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                value={assignLabId}
+                onChange={(e) => setAssignLabId(Number(e.target.value) || '')}
+                disabled={!assignDeptId}
               >
-                Connect via SSH
+                <option value="">Select lab</option>
+                {assignDeptLabs.map((lab) => (
+                  <option key={lab.lab_id} value={lab.lab_id}>
+                    Lab {lab.lab_number}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-2">
+              <button className="btn-secondary" onClick={() => setAssignTarget(null)}>
+                Cancel
+              </button>
+              <button className="btn-primary" onClick={handleAssign} disabled={assignLoading || !assignLabId}>
+                {assignLoading ? 'Assigning...' : 'Assign To Lab'}
               </button>
             </div>
           </div>
@@ -497,94 +592,88 @@ export default function Systems() {
   )
 }
 
-function SystemCard({ name, lab, ip, status, cpu, memory, uptime, onViewDetails }: {
-  name: string
+function DetailRow({ label, value, mono, capitalize }: { label: string; value: string; mono?: boolean; capitalize?: boolean }) {
+  return (
+    <div>
+      <label className="text-sm font-medium text-gray-500">{label}</label>
+      <p className={`text-lg font-semibold text-gray-900 mt-1 ${mono ? 'font-mono text-base' : ''} ${capitalize ? 'capitalize' : ''}`}>{value}</p>
+    </div>
+  )
+}
+
+function SystemCard({
+  system,
+  lab,
+  department,
+  onViewDetails,
+  onAssignToLab,
+}: {
+  system: SystemRow
   lab: string
-  ip: string
-  status: string
-  cpu: number
-  memory: number
-  uptime: string
-  onViewDetails: (system: { name: string; lab: string; ip: string; status: string; cpu: number; memory: number; uptime: string }) => void
+  department: string
+  onViewDetails: () => void
+  onAssignToLab: () => void
 }) {
   const statusConfig = {
-    critical: { bg: 'bg-red-50', border: 'border-red-200', dot: 'bg-red-500', text: 'text-red-700', label: 'Critical' },
-    warning: { bg: 'bg-yellow-50', border: 'border-yellow-200', dot: 'bg-yellow-500', text: 'text-yellow-700', label: 'Warning' },
-    online: { bg: 'bg-green-50', border: 'border-green-200', dot: 'bg-green-500', text: 'text-green-700', label: 'Online' },
-    offline: { bg: 'bg-gray-50', border: 'border-gray-200', dot: 'bg-gray-500', text: 'text-gray-700', label: 'Offline' },
-  }[status]
+    active: { bg: 'bg-green-50', border: 'border-green-200', dot: 'bg-green-500', label: 'Active' },
+    discovered: { bg: 'bg-blue-50', border: 'border-blue-200', dot: 'bg-blue-500', label: 'Discovered' },
+    maintenance: { bg: 'bg-yellow-50', border: 'border-yellow-200', dot: 'bg-yellow-500', label: 'Maintenance' },
+    offline: { bg: 'bg-gray-50', border: 'border-gray-200', dot: 'bg-gray-500', label: 'Offline' },
+  }[system.status as 'active' | 'discovered' | 'maintenance' | 'offline']
 
   return (
     <div className="card p-6 hover:shadow-lg transition-all duration-200">
-      {/* Header */}
       <div className="flex items-start justify-between mb-4">
         <div className="flex items-center space-x-3">
           <div className="w-10 h-10 bg-gradient-to-br from-primary-500 to-primary-600 rounded-lg flex items-center justify-center">
             <Server className="w-5 h-5 text-white" />
           </div>
           <div>
-            <h3 className="font-semibold text-gray-900">{name}</h3>
-            <p className="text-sm text-gray-500">{lab}</p>
+            <h3 className="font-semibold text-gray-900">{system.hostname}</h3>
+            <p className="text-sm text-gray-500">{department}</p>
           </div>
         </div>
         <div className="flex items-center space-x-2">
-          <div className={`${statusConfig?.dot} w-2 h-2 rounded-full`}></div>
+          <div className={`${statusConfig?.dot || 'bg-gray-400'} w-2 h-2 rounded-full`}></div>
         </div>
       </div>
 
-      {/* IP and Status */}
-      <div className={`${statusConfig?.bg} ${statusConfig?.border} border rounded-lg px-3 py-2 mb-4`}>
-        <div className="flex items-center justify-between">
-          <span className="text-xs text-gray-600">IP Address</span>
-          <span className="text-sm font-mono font-medium text-gray-900">{ip}</span>
+      <div className={`${statusConfig?.bg || 'bg-gray-50'} ${statusConfig?.border || 'border-gray-200'} border rounded-lg px-3 py-2 mb-4`}> 
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-gray-600">Status</span>
+          <span className="font-semibold capitalize">{statusConfig?.label || system.status}</span>
         </div>
       </div>
 
-      {/* Metrics */}
-      <div className="space-y-3 mb-4">
-        <div>
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-xs text-gray-600">CPU</span>
-            <span className="text-xs font-semibold text-gray-900">{cpu}%</span>
-          </div>
-          <div className="w-full bg-gray-100 rounded-full h-1.5">
-            <div
-              className={`h-1.5 rounded-full transition-all ${
-                cpu > 80 ? 'bg-red-500' : cpu > 60 ? 'bg-yellow-500' : 'bg-green-500'
-              }`}
-              style={{ width: `${cpu}%` }}
-            ></div>
-          </div>
+      <div className="space-y-2 text-sm mb-4">
+        <div className="flex justify-between gap-3">
+          <span className="text-gray-500">Lab</span>
+          <span className="font-medium text-gray-900 text-right">{lab}</span>
         </div>
-        <div>
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-xs text-gray-600">Memory</span>
-            <span className="text-xs font-semibold text-gray-900">{memory}%</span>
-          </div>
-          <div className="w-full bg-gray-100 rounded-full h-1.5">
-            <div
-              className={`h-1.5 rounded-full transition-all ${
-                memory > 80 ? 'bg-red-500' : memory > 60 ? 'bg-yellow-500' : 'bg-green-500'
-              }`}
-              style={{ width: `${memory}%` }}
-            ></div>
-          </div>
+        <div className="flex justify-between gap-3">
+          <span className="text-gray-500">IP</span>
+          <span className="font-mono text-gray-900 text-right">{system.ip_address}</span>
+        </div>
+        <div className="flex justify-between gap-3">
+          <span className="text-gray-500">MAC</span>
+          <span className="font-mono text-gray-900 text-right">{system.mac_address || 'N/A'}</span>
+        </div>
+        <div className="flex justify-between gap-3">
+          <span className="text-gray-500">CPU</span>
+          <span className="font-medium text-gray-900 text-right">{system.cpu_model || 'N/A'}</span>
+        </div>
+        <div className="flex justify-between gap-3">
+          <span className="text-gray-500">GPU</span>
+          <span className="font-medium text-gray-900 text-right">{system.gpu_model || 'N/A'}</span>
         </div>
       </div>
 
-      {/* Footer */}
-      <div className="flex items-center justify-between pt-4 border-t border-gray-100">
-        <div className="flex items-center space-x-2 text-gray-500">
-          <Clock className="w-4 h-4" />
-          <span className="text-xs">{uptime}</span>
-        </div>
-        <button 
-          onClick={() => {
-            onViewDetails({ name, lab, ip, status, cpu, memory, uptime })
-          }}
-          className="text-sm font-medium text-primary-600 hover:text-primary-700 transition-colors"
-        >
-          View Details →
+      <div className="flex flex-wrap items-center justify-end gap-3 pt-4 border-t border-gray-100">
+        <button onClick={onAssignToLab} className="text-sm font-medium text-gray-700 hover:text-gray-900 transition-colors">
+          Assign To Lab
+        </button>
+        <button onClick={onViewDetails} className="text-sm font-medium text-primary-600 hover:text-primary-700 transition-colors">
+          View Details {`->`}
         </button>
       </div>
     </div>

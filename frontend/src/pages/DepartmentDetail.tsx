@@ -120,7 +120,7 @@ export default function DepartmentDetail() {
     }
 
     try {
-      await api.post(`/api/departments/${deptId}/labs`, { number: parseInt(labNumber) })
+      await api.post(`/departments/${deptId}/labs`, { number: parseInt(labNumber) })
       addToast('Lab created successfully', 'success')
       setShowLabModal(false)
       setLabNumber('')
@@ -135,7 +135,7 @@ export default function DepartmentDetail() {
     if (!selectedLab) return
 
     try {
-      await api.delete(`/api/departments/${deptId}/labs/${selectedLab.lab_id}`)
+      await api.delete(`/departments/${deptId}/labs/${selectedLab.lab_id}`)
       addToast('Lab deleted successfully', 'success')
       setShowDeleteLabDialog(false)
       setSelectedLab(null)
