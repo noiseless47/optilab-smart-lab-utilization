@@ -7,9 +7,9 @@ This guide explains how to add new lab computer systems to the OptiLab metrics c
 ```
 Target System (0.10, 0.11, etc.)
     ↑ (rvce user, target_key auth)
-Bastion Host (0.12 - jump user, target_key)
+Bastion Host (0.1 - jump user, target_key)
     ↑ (jump user, bastion_key auth)
-Collector (0.13 - aayush user, bastion_key)
+Collectors (0.2, 0.3 - collector user, bastion_key)
     ↑
 Database & Frontend
 ```
@@ -18,13 +18,13 @@ Database & Frontend
 
 Before adding a new target system, ensure:
 
-1. **Bastion Host (192.168.0.12)** is configured with:
+1. **Bastion Host (192.168.0.1)** is configured with:
    - `jump` user created
    - `/home/jump/.ssh/target_key` present
    - `/home/jump/.ssh/config` configured
    - SSH service running
 
-2. **Collector (192.168.0.13)** has:
+2. **Collectors (192.168.0.2 and/or 192.168.0.3)** have:
    - `~/.ssh/bastion_key` for bastion authentication
    - `~/.ssh/target_key` for target authentication
    - `~/.ssh/config` with bastion ProxyJump settings
@@ -76,7 +76,7 @@ chmod 600 ~/.ssh/authorized_keys
 
 ## Step 2: Verify Bastion Connection
 
-From the **bastion host (0.12)**, test the connection to the new target:
+From the **bastion host (0.1)**, test the connection to the new target:
 
 ```bash
 sudo -u jump ssh rvce@192.168.0.10 hostname
@@ -93,7 +93,7 @@ If this fails:
 
 ### 3.1 Add New Target to SSH Config
 
-On the **collector (0.13)**, edit `~/.ssh/config`:
+On each **collector (0.2 / 0.3)**, edit `~/.ssh/config`:
 
 ```bash
 nano ~/.ssh/config
@@ -122,7 +122,7 @@ chmod 600 ~/.ssh/config
 If you already have multiple targets in one Host line, update it:
 
 ```
-Host 192.168.0.10 192.168.0.11 192.168.0.12
+Host 192.168.0.10 192.168.0.11
     User rvce
     ProxyJump bastion
     IdentityFile ~/.ssh/target_key
@@ -133,7 +133,7 @@ Host 192.168.0.10 192.168.0.11 192.168.0.12
 
 ### 4.1 Test from Collector
 
-From the **collector (0.13)**:
+From a **collector (0.2 or 0.3)**:
 
 ```bash
 ssh 192.168.0.10 hostname
@@ -156,7 +156,7 @@ This shows detailed connection steps and helps diagnose issues.
 On the **collector**, test metrics collection:
 
 ```bash
-cd ~/Desktop/Projects/optilab-smart-lab-utilization/collector
+cd ~/optilab-smart-lab-utilization/collector
 ssh 192.168.0.10 'bash -s' < metrics_collector.sh
 ```
 
@@ -189,7 +189,7 @@ Expected output: JSON metrics data
 If you have SSH collection scripts set up:
 
 ```bash
-cd ~/Desktop/Projects/optilab-smart-lab-utilization/collector
+cd ~/optilab-smart-lab-utilization/collector
 SSH_USER=rvce SSH_KEY=~/.ssh/target_key ./ssh_script.sh --single 192.168.0.10
 ```
 
@@ -221,7 +221,7 @@ SSH_USER=rvce SSH_KEY=~/.ssh/target_key ./ssh_script.sh --single 192.168.0.10
 
 ### Bastion Connection Issues
 
-**Error:** `jump@192.168.0.12: Permission denied`
+**Error:** `jump@192.168.0.1: Permission denied`
 
 **Solution:**
 - Verify bastion key exists on collector:
@@ -230,7 +230,7 @@ SSH_USER=rvce SSH_KEY=~/.ssh/target_key ./ssh_script.sh --single 192.168.0.10
   ```
 - Test direct bastion connection:
   ```bash
-  ssh -i ~/.ssh/bastion_key jump@192.168.0.12 "echo test"
+  ssh -i ~/.ssh/bastion_key jump@192.168.0.1 "echo test"
   ```
 - Check bastion's authorized_keys:
   ```bash
@@ -268,7 +268,7 @@ Collector SSH config (`~/.ssh/config`):
 
 ```
 Host bastion
-    HostName 192.168.0.12
+    HostName 192.168.0.1
     User jump
     Port 22
     IdentityFile ~/.ssh/bastion_key

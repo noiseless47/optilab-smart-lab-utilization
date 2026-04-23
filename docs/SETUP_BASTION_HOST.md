@@ -11,7 +11,7 @@ sudo ./bastion_host_setup.sh
 The script will ask you for:
 - **Bastion username** (default: `jump`) - User for SSH connections
 - **SSH port** (default: `22`) - Port for SSH service
-- **Collector server IP** - IP address of your OptiLab collector server
+- **Collector server IPs** - Comma-separated collector IPs (example: `192.168.0.2,192.168.0.3`)
 - **Target network CIDR** - Network range of lab computers (e.g., `10.30.0.0/16`)
 
 ### Step 2: What the Script Does
@@ -72,11 +72,11 @@ ssh -i ~/.ssh/bastion_key \
 
 ### Step 5: Update Collector Configuration
 
-On collector server, edit `collector/bastion_config.sh`:
+On each collector server, edit `collector/bastion_config.sh`:
 
 ```bash
 BASTION_ENABLED="true"
-BASTION_HOST="<BASTION-IP>"      # This server's IP
+BASTION_HOST="192.168.0.1"       # Bastion host IP
 BASTION_PORT="22"                # Or custom port
 BASTION_USER="jump"              # Or custom username
 BASTION_KEY="$HOME/.ssh/bastion_key"
@@ -97,10 +97,10 @@ BASTION_KEY="$HOME/.ssh/bastion_key"
 ## Architecture After Setup
 
 ```
-Collector Server ──SSH:22──▶ Bastion (This System) ──SSH:22──▶ Target Labs
-(OptiLab)                    (Jump Host)                       (10.30.x.x)
+Collector Servers ──SSH:22──▶ Bastion (This System) ──SSH:22──▶ Target Labs
+(192.168.0.2/0.3)            (192.168.0.1)                     (10.30.x.x)
 
-• Firewall blocks all except collector
+• Firewall blocks all except allowed collectors
 • All connections logged
 • No password authentication
 • Keys required at each hop
