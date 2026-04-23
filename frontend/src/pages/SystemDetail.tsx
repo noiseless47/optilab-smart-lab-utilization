@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Server, Cpu, HardDrive, Activity, Network, Plus, BarChart3, TrendingUp } from 'lucide-react'
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
+import { ArrowLeft, Server, Cpu, HardDrive, Activity, Network, Plus, BarChart3, TrendingUp, Zap } from 'lucide-react'
 import { Line } from 'react-chartjs-2'
 import {
   Chart as ChartJS,
@@ -16,7 +16,17 @@ import {
 import Modal from '../components/Modal'
 import Toast, { ToastMessage } from '../components/Toast'
 import Loading from '../components/Loading'
+import CFRSMetricsViewer from '../components/CFRSMetricsViewer'
+import CFRSScoreDisplay from '../components/CFRSScoreDisplay'
 import api from '../lib/api'
+
+// Helper function to safely format numbers (handles both strings and numbers from DB)
+const safeToFixed = (value: any, decimals: number = 1): string => {
+  if (value === null || value === undefined) return 'N/A'
+  const num = typeof value === 'string' ? parseFloat(value) : value
+  if (isNaN(num)) return 'N/A'
+  return num.toFixed(decimals)
+}
 
 ChartJS.register(
   CategoryScale,
@@ -68,12 +78,22 @@ interface AggregateMetric {
   system_id: string
   avg_cpu_percent: number
   max_cpu_percent: number
+  min_cpu_percent?: number
   p95_cpu_percent: number
+  stddev_cpu_percent?: number
   avg_ram_percent: number
   max_ram_percent: number
+  min_ram_percent?: number
   p95_ram_percent: number
+  stddev_ram_percent?: number
   avg_gpu_percent?: number
   max_gpu_percent?: number
+  min_gpu_percent?: number
+  stddev_gpu_percent?: number
+  avg_disk_percent?: number
+  max_disk_percent?: number
+  min_disk_percent?: number
+  stddev_disk_percent?: number
   avg_disk_io_wait?: number
   total_disk_read_gb?: number
   total_disk_write_gb?: number
@@ -84,6 +104,7 @@ interface AggregateMetric {
 export default function SystemDetail() {
   const { deptId, labId, systemId } = useParams<{ deptId: string; labId: string; systemId: string }>()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   
   const [system, setSystem] = useState<System | null>(null)
   const [metrics, setMetrics] = useState<Metric[]>([])
@@ -93,7 +114,11 @@ export default function SystemDetail() {
   const [toasts, setToasts] = useState<ToastMessage[]>([])
   
   // Toggle states for Live vs Aggregate and view type
-  const [metricsMode, setMetricsMode] = useState<'live' | 'aggregate'>('live')
+  // Check URL params to set initial view mode
+  const initialView = searchParams.get('view')
+  const [metricsMode, setMetricsMode] = useState<'live' | 'aggregate' | 'cfrs'>(
+    initialView === 'aggregate' ? 'aggregate' : initialView === 'cfrs' ? 'cfrs' : 'live'
+  )
   const [viewType, setViewType] = useState<'graphs' | 'numeric'>('graphs')
   
   const [maintenanceForm, setMaintenanceForm] = useState({
@@ -367,7 +392,7 @@ export default function SystemDetail() {
         <h2 className="text-2xl font-bold text-gray-900">Performance Metrics</h2>
         
         <div className="flex items-center space-x-6">
-          {/* Mode Toggle: Live vs Aggregate */}
+          {/* Mode Toggle: Live vs Aggregate vs CFRS */}
           <div className="flex items-center space-x-2 bg-gray-100 rounded-lg p-1">
             <button
               onClick={() => setMetricsMode('live')}
@@ -390,6 +415,17 @@ export default function SystemDetail() {
             >
               <BarChart3 className="w-4 h-4 inline mr-2" />
               Aggregate
+            </button>
+            <button
+              onClick={() => setMetricsMode('cfrs')}
+              className={`px-4 py-2 rounded-md font-medium transition ${
+                metricsMode === 'cfrs'
+                  ? 'bg-white text-yellow-600 shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              <Zap className="w-4 h-4 inline mr-2" />
+              CFRS
             </button>
           </div>
 
@@ -451,7 +487,16 @@ export default function SystemDetail() {
       </div>
 
       {/* Metrics Visualization */}
-      {metricsMode === 'live' ? (
+      {metricsMode === 'cfrs' ? (
+        // CFRS SCORE DISPLAY SECTION
+        <>
+          <CFRSScoreDisplay systemId={systemId || ''} />
+          <div className="mt-8">
+            <h3 className="text-xl font-bold text-gray-900 mb-4">CFRS Raw Metrics</h3>
+            <CFRSMetricsViewer systemId={systemId || ''} />
+          </div>
+        </>
+      ) : metricsMode === 'live' ? (
         // LIVE METRICS SECTION
         metrics.length > 0 ? (
           <>
@@ -761,40 +806,80 @@ export default function SystemDetail() {
                 <div className="space-y-3">
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-gray-500">Avg CPU</span>
-                    <span className="font-bold text-purple-600">{parseFloat(metric.avg_cpu_percent).toFixed(1)}%</span>
+                    <span className="font-bold text-purple-600">{safeToFixed(metric.avg_cpu_percent, 1)}%</span>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-gray-500">Max CPU</span>
-                    <span className="font-bold text-purple-700">{parseFloat(metric.max_cpu_percent).toFixed(1)}%</span>
+                    <span className="font-bold text-purple-700">{safeToFixed(metric.max_cpu_percent, 1)}%</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-500">Min CPU</span>
+                    <span className="font-bold text-purple-400">{safeToFixed(metric.min_cpu_percent, 1)}%</span>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-gray-500">P95 CPU</span>
-                    <span className="font-bold text-purple-500">{parseFloat(metric.p95_cpu_percent).toFixed(1)}%</span>
+                    <span className="font-bold text-purple-500">{safeToFixed(metric.p95_cpu_percent, 1)}%</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-500">σ CPU</span>
+                    <span className="font-bold text-purple-300">{safeToFixed(metric.stddev_cpu_percent, 2)}%</span>
                   </div>
                   <hr className="my-2" />
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-gray-500">Avg RAM</span>
-                    <span className="font-bold text-green-600">{parseFloat(metric.avg_ram_percent).toFixed(1)}%</span>
+                    <span className="font-bold text-green-600">{safeToFixed(metric.avg_ram_percent, 1)}%</span>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-gray-500">Max RAM</span>
-                    <span className="font-bold text-green-700">{parseFloat(metric.max_ram_percent).toFixed(1)}%</span>
+                    <span className="font-bold text-green-700">{safeToFixed(metric.max_ram_percent, 1)}%</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-500">Min RAM</span>
+                    <span className="font-bold text-green-400">{safeToFixed(metric.min_ram_percent, 1)}%</span>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-gray-500">P95 RAM</span>
-                    <span className="font-bold text-green-500">{parseFloat(metric.p95_ram_percent).toFixed(1)}%</span>
+                    <span className="font-bold text-green-500">{safeToFixed(metric.p95_ram_percent, 1)}%</span>
                   </div>
-                  {metric.total_disk_read_gb !== undefined && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-500">σ RAM</span>
+                    <span className="font-bold text-green-300">{safeToFixed(metric.stddev_ram_percent, 2)}%</span>
+                  </div>
+                  {(metric.avg_disk_percent !== undefined || metric.total_disk_read_gb !== undefined) && (
                     <>
                       <hr className="my-2" />
-                      <div className="flex justify-between items-center">
-                        <span className="text-sm text-gray-500">Disk Read</span>
-                        <span className="font-bold text-teal-600">{parseFloat(metric.total_disk_read_gb).toFixed(2)} GB</span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-sm text-gray-500">Disk Write</span>
-                        <span className="font-bold text-amber-600">{parseFloat(metric.total_disk_write_gb || 0).toFixed(2)} GB</span>
-                      </div>
+                      {metric.avg_disk_percent !== undefined && (
+                        <>
+                          <div className="flex justify-between items-center">
+                            <span className="text-sm text-gray-500">Avg Disk</span>
+                            <span className="font-bold text-blue-600">{safeToFixed(metric.avg_disk_percent, 1)}%</span>
+                          </div>
+                          {metric.max_disk_percent !== undefined && (
+                            <div className="flex justify-between items-center">
+                              <span className="text-sm text-gray-500">Max Disk</span>
+                              <span className="font-bold text-blue-700">{safeToFixed(metric.max_disk_percent, 1)}%</span>
+                            </div>
+                          )}
+                          {metric.stddev_disk_percent !== undefined && (
+                            <div className="flex justify-between items-center">
+                              <span className="text-sm text-gray-500">σ Disk</span>
+                              <span className="font-bold text-blue-300">{safeToFixed(metric.stddev_disk_percent, 2)}%</span>
+                            </div>
+                          )}
+                        </>
+                      )}
+                      {metric.total_disk_read_gb !== undefined && (
+                        <>
+                          <div className="flex justify-between items-center">
+                            <span className="text-sm text-gray-500">Disk Read</span>
+                            <span className="font-bold text-teal-600">{safeToFixed(metric.total_disk_read_gb, 2)} GB</span>
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <span className="text-sm text-gray-500">Disk Write</span>
+                            <span className="font-bold text-amber-600">{safeToFixed(metric.total_disk_write_gb || 0, 2)} GB</span>
+                          </div>
+                        </>
+                      )}
                     </>
                   )}
                   {metric.avg_gpu_percent !== undefined && metric.avg_gpu_percent !== null && (
@@ -802,14 +887,33 @@ export default function SystemDetail() {
                       <hr className="my-2" />
                       <div className="flex justify-between items-center">
                         <span className="text-sm text-gray-500">Avg GPU</span>
-                        <span className="font-bold text-pink-600">{parseFloat(metric.avg_gpu_percent).toFixed(1)}%</span>
+                        <span className="font-bold text-pink-600">{safeToFixed(metric.avg_gpu_percent, 1)}%</span>
                       </div>
                       <div className="flex justify-between items-center">
                         <span className="text-sm text-gray-500">Max GPU</span>
-                        <span className="font-bold text-pink-700">{parseFloat(metric.max_gpu_percent || 0).toFixed(1)}%</span>
+                        <span className="font-bold text-pink-700">{safeToFixed(metric.max_gpu_percent || 0, 1)}%</span>
                       </div>
+                      {metric.min_gpu_percent !== undefined && (
+                        <div className="flex justify-between items-center">
+                          <span className="text-sm text-gray-500">Min GPU</span>
+                          <span className="font-bold text-pink-400">{safeToFixed(metric.min_gpu_percent, 1)}%</span>
+                        </div>
+                      )}
+                      {metric.stddev_gpu_percent !== undefined && (
+                        <div className="flex justify-between items-center">
+                          <span className="text-sm text-gray-500">σ GPU</span>
+                          <span className="font-bold text-pink-300">{safeToFixed(metric.stddev_gpu_percent, 2)}%</span>
+                        </div>
+                      )}
                     </>
                   )}
+                  {/* Sample Count Badge */}
+                  <div className="mt-4 pt-3 border-t border-gray-200">
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs text-gray-400">Samples</span>
+                      <span className="text-xs font-mono text-gray-500">{metric.metric_count}</span>
+                    </div>
+                  </div>
                 </div>
               </div>
             ))}

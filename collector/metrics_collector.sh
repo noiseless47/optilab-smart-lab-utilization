@@ -85,6 +85,39 @@ get_cpu_percent() {
     fi
 }
 
+get_cpu_iowait() {
+    # Get CPU I/O wait percentage
+    if command_exists mpstat; then
+        # Use mpstat to get iowait (from sysstat package)
+        mpstat 1 1 | awk '/Average/ {print $(NF-3)}'
+    elif [[ -f /proc/stat ]]; then
+        # Linux: Calculate iowait from /proc/stat
+        local cpu_line1=($(grep '^cpu ' /proc/stat))
+        sleep 1
+        local cpu_line2=($(grep '^cpu ' /proc/stat))
+        
+        # iowait is the 5th field (index 5)
+        local iowait1=${cpu_line1[5]:-0}
+        local iowait2=${cpu_line2[5]:-0}
+        
+        local total1=0
+        local total2=0
+        for val in "${cpu_line1[@]:1}"; do total1=$((total1 + val)); done
+        for val in "${cpu_line2[@]:1}"; do total2=$((total2 + val)); done
+        
+        local iowait_delta=$((iowait2 - iowait1))
+        local total_delta=$((total2 - total1))
+        
+        if [[ $total_delta -gt 0 ]]; then
+            awk "BEGIN {printf \"%.2f\", 100 * $iowait_delta / $total_delta}"
+        else
+            echo "0.00"
+        fi
+    else
+        echo "null"
+    fi
+}
+
 get_cpu_temperature() {
     # Try multiple methods to get CPU temperature
     
@@ -259,6 +292,73 @@ get_network_io() {
 # GPU Metrics
 ################################################################################
 
+get_context_switch_rate() {
+    # Get context switch rate (switches per second)
+    if command_exists sar; then
+        # Use sar -w for context switches
+        sar -w 1 1 2>/dev/null | awk '/Average/ {print int($2)}'
+    elif command_exists vmstat; then
+        # Fallback to vmstat (use second line)
+        vmstat 1 2 2>/dev/null | tail -1 | awk '{print int($12)}'
+    else
+        echo "null"
+    fi
+}
+
+get_swap_rates() {
+    # Get swap in/out rates (pages per second)
+    if command_exists sar; then
+        # Use sar -W for swap activity
+        local swap_data=$(sar -W 1 1 2>/dev/null | awk '/Average/ {print $2, $3}')
+        if [[ -n "$swap_data" ]]; then
+            echo "$swap_data"
+        else
+            echo "null null"
+        fi
+    elif command_exists vmstat; then
+        # Fallback to vmstat (si = swap in, so = swap out)
+        vmstat 1 2 2>/dev/null | tail -1 | awk '{printf "%.2f %.2f", $7, $8}'
+    else
+        echo "null null"
+    fi
+}
+
+get_page_fault_rates() {
+    # Get page fault rates (faults per second)
+    if command_exists sar; then
+        # Use sar -B for paging statistics
+        local paging_data=$(sar -B 1 1 2>/dev/null | awk '/Average/ {print $2, $3}')
+        if [[ -n "$paging_data" ]]; then
+            echo "$paging_data"
+        else
+            echo "null null"
+        fi
+    elif [[ -f /proc/vmstat ]]; then
+        # Fallback: calculate from /proc/vmstat
+        local pgfault1=$(grep '^pgfault ' /proc/vmstat 2>/dev/null | awk '{print $2}')
+        local pgmajfault1=$(grep '^pgmajfault ' /proc/vmstat 2>/dev/null | awk '{print $2}')
+        
+        sleep 1
+        
+        local pgfault2=$(grep '^pgfault ' /proc/vmstat 2>/dev/null | awk '{print $2}')
+        local pgmajfault2=$(grep '^pgmajfault ' /proc/vmstat 2>/dev/null | awk '{print $2}')
+        
+        if [[ -n "$pgfault1" && -n "$pgfault2" ]]; then
+            local fault_rate=$((pgfault2 - pgfault1))
+            local majfault_rate=$((pgmajfault2 - pgmajfault1))
+            echo "$fault_rate $majfault_rate"
+        else
+            echo "null null"
+        fi
+    else
+        echo "null null"
+    fi
+}
+
+################################################################################
+# GPU Metrics
+################################################################################
+
 get_gpu_metrics() {
     # Check for NVIDIA GPU
     if command_exists nvidia-smi; then
@@ -321,6 +421,7 @@ collect_metrics() {
     # CPU metrics
     local cpu_percent=$(get_cpu_percent)
     local cpu_temp=$(get_cpu_temperature)
+    local cpu_iowait=$(get_cpu_iowait)
     
     # Memory metrics
     local ram_percent=$(get_ram_percent)
@@ -342,6 +443,15 @@ collect_metrics() {
     local gpu_memory_gb=${gpu_metrics[1]:-null}
     local gpu_temp=${gpu_metrics[2]:-null}
     
+    # CFRS-relevant advanced metrics
+    local context_switches=$(get_context_switch_rate)
+    local swap_rates=($(get_swap_rates))
+    local swap_in=${swap_rates[0]:-null}
+    local swap_out=${swap_rates[1]:-null}
+    local page_faults=($(get_page_fault_rates))
+    local page_fault_rate=${page_faults[0]:-null}
+    local major_page_fault_rate=${page_faults[1]:-null}
+    
     # Output in JSON format
     cat << EOF
 {
@@ -351,6 +461,7 @@ collect_metrics() {
   "logged_in_users": $logged_users,
   "cpu_percent": $cpu_percent,
   "cpu_temperature": $cpu_temp,
+  "cpu_iowait_percent": $cpu_iowait,
   "ram_percent": $ram_percent,
   "disk_percent": $disk_percent,
   "disk_read_mbps": $disk_read_mbps,
@@ -359,7 +470,12 @@ collect_metrics() {
   "network_recv_mbps": $network_recv_mbps,
   "gpu_percent": $gpu_percent,
   "gpu_memory_used_gb": $gpu_memory_gb,
-  "gpu_temperature": $gpu_temp
+  "gpu_temperature": $gpu_temp,
+  "context_switch_rate": $context_switches,
+  "swap_in_rate": $swap_in,
+  "swap_out_rate": $swap_out,
+  "page_fault_rate": $page_fault_rate,
+  "major_page_fault_rate": $major_page_fault_rate
 }
 EOF
 }
