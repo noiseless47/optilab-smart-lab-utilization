@@ -105,6 +105,12 @@ def relative_percent_error(observed: float, reference: float) -> float:
     return abs(observed - reference) / denominator * 100.0
 
 
+def symmetric_percent_error(observed: float, reference: float) -> float:
+    midpoint = (abs(observed) + abs(reference)) / 2.0
+    denominator = max(midpoint, 1.0)
+    return abs(observed - reference) / denominator * 100.0
+
+
 def load_json(path: Path) -> Dict[str, Any]:
     with path.open("r", encoding="utf-8") as f:
         return json.load(f)
@@ -183,6 +189,17 @@ def expand_range(from_ip: str, to_ip: str, max_size: int = 200_000) -> List[str]
         return []
 
     return [str(ipaddress.ip_address(n)) for n in range(start, end + 1)]
+
+
+def configured_ip_set_from_config(config: Dict[str, Any]) -> List[str]:
+    expanded: List[str] = []
+    for lab in config.get("labs", []):
+        ip_range = lab.get("ip_range", {})
+        from_ip = ip_range.get("from")
+        to_ip = ip_range.get("to")
+        if from_ip and to_ip:
+            expanded.extend(expand_range(from_ip, to_ip))
+    return sorted(set(expanded))
 
 
 def connect_db(dsn: str):
@@ -433,33 +450,28 @@ def collect_discovery_accuracy(
         rows = cur.fetchall()
 
     discovered_ips = sorted({str(r["ip"]) for r in rows if r.get("ip")})
+    discovered_set = set(discovered_ips)
 
     expected_ips: List[str] = []
     method = "configured_ranges"
+    discovered_scope_set: set[str]
+    out_of_scope: List[str]
 
     if expected_hosts_file and expected_hosts_file.exists():
         expected_ips = load_expected_ips(expected_hosts_file, expected_hosts_column)
         method = "inventory_file"
+        expected_set = set(expected_ips)
+        discovered_scope_set = discovered_set
+        out_of_scope = sorted(discovered_set.difference(expected_set))
     else:
-        ranges = []
-        for lab in config.get("labs", []):
-            ip_range = lab.get("ip_range", {})
-            from_ip = ip_range.get("from")
-            to_ip = ip_range.get("to")
-            if from_ip and to_ip:
-                ranges.append((from_ip, to_ip))
+        expected_ips = configured_ip_set_from_config(config)
+        expected_set = set(expected_ips)
+        discovered_scope_set = discovered_set.intersection(expected_set)
+        out_of_scope = sorted(discovered_set.difference(expected_set))
 
-        expanded: List[str] = []
-        for from_ip, to_ip in ranges:
-            expanded.extend(expand_range(from_ip, to_ip))
-        expected_ips = sorted(set(expanded))
-
-    expected_set = set(expected_ips)
-    discovered_set = set(discovered_ips)
-
-    matched = sorted(expected_set.intersection(discovered_set))
+    matched = sorted(expected_set.intersection(discovered_scope_set))
     missing = sorted(expected_set.difference(discovered_set))
-    unexpected = sorted(discovered_set.difference(expected_set))
+    unexpected = sorted(discovered_scope_set.difference(expected_set))
 
     if expected_set:
         accuracy = len(matched) / len(expected_set) * 100.0
@@ -469,13 +481,16 @@ def collect_discovery_accuracy(
     return {
         "method": method,
         "expected_count": len(expected_set),
-        "discovered_count": len(discovered_set),
+        "discovered_count": len(discovered_scope_set),
+        "discovered_total_count": len(discovered_set),
         "matched_count": len(matched),
         "accuracy_percent": accuracy,
         "missing_count": len(missing),
         "unexpected_count": len(unexpected),
         "missing_examples": missing[:20],
         "unexpected_examples": unexpected[:20],
+        "discovered_out_of_scope_count": len(out_of_scope),
+        "discovered_out_of_scope_examples": out_of_scope[:20],
     }
 
 
@@ -510,6 +525,17 @@ def collect_ingest_and_freshness(
 
         cur.execute(
             """
+            SELECT
+                MIN(timestamp) AS min_ts,
+                MAX(timestamp) AS max_ts
+            FROM metrics
+            WHERE timestamp >= NOW() - INTERVAL '24 hours'
+            """
+        )
+        coverage_row = cur.fetchone()
+
+        cur.execute(
+            """
             WITH deltas AS (
                 SELECT
                     system_id,
@@ -535,6 +561,18 @@ def collect_ingest_and_freshness(
     if total_systems > 0:
         freshness = fresh_systems / total_systems * 100.0
 
+    min_ts = coverage_row.get("min_ts") if coverage_row else None
+    max_ts = coverage_row.get("max_ts") if coverage_row else None
+
+    data_hours_covered = None
+    if min_ts and max_ts:
+        data_hours_covered = max((max_ts - min_ts).total_seconds() / 3600.0, 0.0)
+
+    inserts_per_hour_observed = None
+    if inserts_last_24h > 0:
+        observed_window = max(data_hours_covered or 0.0, 1.0 / 60.0)
+        inserts_per_hour_observed = inserts_last_24h / observed_window
+
     return {
         "total_systems": total_systems,
         "fresh_systems": fresh_systems,
@@ -542,7 +580,9 @@ def collect_ingest_and_freshness(
         "fresh_coverage_percent": freshness,
         "inserts_last_hour": inserts_last_hour,
         "inserts_last_24h": inserts_last_24h,
-        "estimated_inserts_per_hour_from_24h": (inserts_last_24h / 24.0) if inserts_last_24h else 0.0,
+        "window_data_hours_covered": data_hours_covered,
+        "estimated_inserts_per_hour_observed": inserts_per_hour_observed,
+        "estimated_inserts_per_hour_rolling_24h": (inserts_last_24h / 24.0) if inserts_last_24h else 0.0,
         "collection_interval_stats": {
             "window_hours": sample_window_hours,
             "sample_count": int(row["sample_count"]) if row and row.get("sample_count") else 0,
@@ -572,6 +612,8 @@ def run_local_metric_variance(
 
     cpu_errors: List[float] = []
     ram_errors: List[float] = []
+    cpu_smape: List[float] = []
+    ram_smape: List[float] = []
     cpu_abs_deltas: List[float] = []
     ram_abs_deltas: List[float] = []
     samples_raw: List[Dict[str, Any]] = []
@@ -598,15 +640,17 @@ def run_local_metric_variance(
         collector_cpu = safe_float(payload.get("cpu_percent"))
         collector_ram = safe_float(payload.get("ram_percent"))
 
-        native_cpu = native_cpu_percent_linux(interval_seconds=1.0)
+        native_cpu = native_cpu_percent_linux(interval_seconds=0.5)
         native_ram = native_ram_percent_linux()
 
         if collector_cpu is not None:
             cpu_errors.append(relative_percent_error(collector_cpu, native_cpu))
+            cpu_smape.append(symmetric_percent_error(collector_cpu, native_cpu))
             cpu_abs_deltas.append(abs(collector_cpu - native_cpu))
 
         if collector_ram is not None:
             ram_errors.append(relative_percent_error(collector_ram, native_ram))
+            ram_smape.append(symmetric_percent_error(collector_ram, native_ram))
             ram_abs_deltas.append(abs(collector_ram - native_ram))
 
         samples_raw.append(
@@ -619,6 +663,13 @@ def run_local_metric_variance(
             }
         )
 
+    cpu_note = None
+    if cpu_abs_deltas and statistics.fmean(cpu_abs_deltas) >= 8.0:
+        cpu_note = (
+            "CPU instant sampling may diverge between tools under bursty load; "
+            "prefer long-window aggregates for publication claims."
+        )
+
     return {
         "status": "ok",
         "sample_count": samples,
@@ -627,10 +678,20 @@ def run_local_metric_variance(
             "p95": percentile(cpu_errors, 95),
             "max": max(cpu_errors) if cpu_errors else None,
         },
+        "cpu_smape_percent": {
+            "mean": statistics.fmean(cpu_smape) if cpu_smape else None,
+            "p95": percentile(cpu_smape, 95),
+            "max": max(cpu_smape) if cpu_smape else None,
+        },
         "ram_relative_error_percent": {
             "mean": statistics.fmean(ram_errors) if ram_errors else None,
             "p95": percentile(ram_errors, 95),
             "max": max(ram_errors) if ram_errors else None,
+        },
+        "ram_smape_percent": {
+            "mean": statistics.fmean(ram_smape) if ram_smape else None,
+            "p95": percentile(ram_smape, 95),
+            "max": max(ram_smape) if ram_smape else None,
         },
         "cpu_absolute_delta_percent_points": {
             "mean": statistics.fmean(cpu_abs_deltas) if cpu_abs_deltas else None,
@@ -642,7 +703,42 @@ def run_local_metric_variance(
             "p95": percentile(ram_abs_deltas, 95),
             "max": max(ram_abs_deltas) if ram_abs_deltas else None,
         },
+        "cpu_variance_note": cpu_note,
         "sample_preview": samples_raw[:5],
+    }
+
+
+def probe_http_endpoint(url: str, timeout_seconds: int = 10) -> Dict[str, Any]:
+    started = time.perf_counter()
+    status: Optional[int] = None
+    body: Optional[Dict[str, Any]] = None
+    error: Optional[str] = None
+
+    try:
+        req = Request(url=url, method="GET")
+        with urlopen(req, timeout=timeout_seconds) as resp:
+            status = int(resp.status)
+            raw = resp.read().decode("utf-8")
+            try:
+                body = json.loads(raw) if raw else {}
+            except json.JSONDecodeError:
+                body = {"raw": raw[:500]}
+    except HTTPError as ex:
+        status = int(ex.code)
+        raw = ex.read().decode("utf-8", errors="replace")
+        try:
+            body = json.loads(raw) if raw else {}
+        except json.JSONDecodeError:
+            body = {"raw": raw[:500]}
+    except Exception as ex:  # noqa: BLE001
+        error = str(ex)
+
+    elapsed_ms = (time.perf_counter() - started) * 1000.0
+    return {
+        "status": status,
+        "body": body,
+        "error": error,
+        "latency_ms": elapsed_ms,
     }
 
 
@@ -651,6 +747,7 @@ def run_api_latency_suite(
     system_id: Optional[int],
     runs: int,
     timeout_seconds: int,
+    force_cfrs_score_endpoint: bool = False,
 ) -> Dict[str, Any]:
     api_base = api_base.rstrip("/")
 
@@ -690,15 +787,49 @@ def run_api_latency_suite(
                     "path": f"/systems/{system_id}/metrics/cfrs/latest",
                     "expected": [200],
                 },
-                {
-                    "name": "cfrs_score",
-                    "path": f"/systems/{system_id}/cfrs/score",
-                    "expected": [200, 400],
-                },
             ]
         )
 
-    results: Dict[str, Any] = {"api_base": api_base, "runs_per_endpoint": runs, "endpoints": []}
+    results: Dict[str, Any] = {
+        "api_base": api_base,
+        "runs_per_endpoint": runs,
+        "endpoints": [],
+        "skipped_endpoints": [],
+    }
+
+    if system_id is not None:
+        cfrs_score_path = f"/systems/{system_id}/cfrs/score"
+        cfrs_score_url = api_base + cfrs_score_path
+        cfrs_probe = probe_http_endpoint(cfrs_score_url, timeout_seconds=timeout_seconds)
+        cfrs_probe["name"] = "cfrs_score_probe"
+        cfrs_probe["path"] = cfrs_score_path
+        results["cfrs_score_probe"] = cfrs_probe
+
+        cfrs_ready_status = cfrs_probe.get("status") in {200, 400}
+        if cfrs_ready_status or force_cfrs_score_endpoint:
+            endpoints.append(
+                {
+                    "name": "cfrs_score",
+                    "path": cfrs_score_path,
+                    "expected": [200, 400],
+                }
+            )
+        else:
+            reason = "CFRS endpoint not ready"
+            probe_body = cfrs_probe.get("body")
+            if isinstance(probe_body, dict) and probe_body.get("error"):
+                reason = str(probe_body.get("error"))
+            elif cfrs_probe.get("error"):
+                reason = str(cfrs_probe.get("error"))
+
+            results["skipped_endpoints"].append(
+                {
+                    "name": "cfrs_score",
+                    "path": cfrs_score_path,
+                    "reason": reason,
+                    "probe_status": cfrs_probe.get("status"),
+                }
+            )
 
     all_ok_latencies: List[float] = []
 
@@ -995,7 +1126,12 @@ def collect_compression_stats(conn) -> Dict[str, Any]:
         }
 
 
-def collect_cfrs_readiness(conn, api_base: str, max_systems: int = 25) -> Dict[str, Any]:
+def collect_cfrs_readiness(
+    conn,
+    api_base: str,
+    max_systems: int = 25,
+    min_baseline_metrics: int = 6,
+) -> Dict[str, Any]:
     result: Dict[str, Any] = {
         "status": "ok",
         "systems_checked": 0,
@@ -1023,11 +1159,12 @@ def collect_cfrs_readiness(conn, api_base: str, max_systems: int = 25) -> Dict[s
                 "reason": f"cfrs_system_baselines unavailable: {ex}",
             }
 
-    complete = [r for r in baseline_rows if int(r.get("baseline_count", 0)) >= 11]
+    complete = [r for r in baseline_rows if int(r.get("baseline_count", 0)) >= min_baseline_metrics]
     candidate_ids = [int(r["system_id"]) for r in complete[:max_systems]]
 
     result["systems_checked"] = len(candidate_ids)
     result["systems_with_complete_baselines"] = len(complete)
+    result["required_baseline_metrics"] = min_baseline_metrics
 
     for system_id in candidate_ids:
         url = api_base.rstrip("/") + f"/systems/{system_id}/cfrs/score"
@@ -1175,11 +1312,17 @@ def build_markdown(results: Dict[str, Any]) -> str:
         lines.append(f"- Method: {discovery.get('method')}")
         lines.append(f"- Expected hosts: {discovery.get('expected_count')}")
         lines.append(f"- Discovered hosts: {discovery.get('discovered_count')}")
+        total_discovered = discovery.get("discovered_total_count")
+        if total_discovered is not None:
+            lines.append(f"- Total discovered in DB: {total_discovered}")
         lines.append(f"- Matched hosts: {discovery.get('matched_count')}")
         acc = discovery.get("accuracy_percent")
         lines.append(f"- Accuracy: {acc:.2f}%" if isinstance(acc, (float, int)) else "- Accuracy: n/a")
         lines.append(f"- Missing hosts: {discovery.get('missing_count')}")
         lines.append(f"- Unexpected hosts: {discovery.get('unexpected_count')}")
+        out_scope = discovery.get("discovered_out_of_scope_count")
+        if isinstance(out_scope, int):
+            lines.append(f"- Out-of-scope discovered hosts: {out_scope}")
         lines.append("")
 
     ingest = results.get("ingest_and_freshness")
@@ -1195,8 +1338,16 @@ def build_markdown(results: Dict[str, Any]) -> str:
         lines.append(f"- Fresh coverage: {cov:.2f}%" if isinstance(cov, (float, int)) else "- Fresh coverage: n/a")
         lines.append(f"- Inserts last hour: {ingest.get('inserts_last_hour')}")
         lines.append(
-            "- Estimated inserts/hour (24h average): "
-            + fmt_num(ingest.get("estimated_inserts_per_hour_from_24h"), digits=2)
+            "- Estimated inserts/hour (observed window): "
+            + fmt_num(ingest.get("estimated_inserts_per_hour_observed"), digits=2)
+        )
+        lines.append(
+            "- Estimated inserts/hour (rolling 24h): "
+            + fmt_num(ingest.get("estimated_inserts_per_hour_rolling_24h"), digits=2)
+        )
+        lines.append(
+            "- Data coverage in 24h window (hours): "
+            + fmt_num(ingest.get("window_data_hours_covered"), digits=2)
         )
         lines.append(f"- Avg interval (sec): {interval.get('avg_seconds')}")
         lines.append(f"- p95 interval (sec): {interval.get('p95_seconds')}")
@@ -1217,6 +1368,10 @@ def build_markdown(results: Dict[str, Any]) -> str:
                 + f"{fmt_num(local_var.get('cpu_relative_error_percent', {}).get('p95'))}%"
             )
             lines.append(
+                "- CPU mean sMAPE: "
+                + f"{fmt_num(local_var.get('cpu_smape_percent', {}).get('mean'))}%"
+            )
+            lines.append(
                 "- RAM mean relative error: "
                 + f"{fmt_num(local_var.get('ram_relative_error_percent', {}).get('mean'))}%"
             )
@@ -1224,6 +1379,13 @@ def build_markdown(results: Dict[str, Any]) -> str:
                 "- RAM p95 relative error: "
                 + f"{fmt_num(local_var.get('ram_relative_error_percent', {}).get('p95'))}%"
             )
+            lines.append(
+                "- RAM mean sMAPE: "
+                + f"{fmt_num(local_var.get('ram_smape_percent', {}).get('mean'))}%"
+            )
+            cpu_note = local_var.get("cpu_variance_note")
+            if cpu_note:
+                lines.append(f"- Note: {cpu_note}")
         else:
             lines.append(f"- Reason: {local_var.get('reason')}")
         lines.append("")
@@ -1238,6 +1400,14 @@ def build_markdown(results: Dict[str, Any]) -> str:
             lines.append(
                 f"| {row.get('name')} | {row.get('mean_ms')} | {row.get('p95_ms')} | {row.get('success_rate_percent')} |"
             )
+        skipped = api.get("skipped_endpoints", [])
+        if skipped:
+            lines.append("")
+            lines.append("Skipped endpoints:")
+            for entry in skipped:
+                lines.append(
+                    f"- {entry.get('name')} ({entry.get('path')}): {entry.get('reason')}"
+                )
         lines.append("")
 
     perf = results.get("query_performance")
@@ -1330,12 +1500,23 @@ def parse_args() -> argparse.Namespace:
 
     parser.add_argument("--api-runs", type=int, default=30)
     parser.add_argument("--api-timeout", type=int, default=10)
+    parser.add_argument(
+        "--force-cfrs-score-endpoint",
+        action="store_true",
+        help="Benchmark CFRS score endpoint even if readiness probe reports server-side errors",
+    )
 
     parser.add_argument("--query-repeats", type=int, default=5)
     parser.add_argument("--statement-timeout-ms", type=int, default=120000)
 
     parser.add_argument("--output-dir", default=str(default_output))
     parser.add_argument("--report-prefix", default="optilab_benchmark")
+    parser.add_argument(
+        "--cfrs-min-baseline-metrics",
+        type=int,
+        default=6,
+        help="Minimum active baseline metrics required per system for CFRS readiness checks",
+    )
 
     parser.add_argument("--skip-discovery", action="store_true")
     parser.add_argument("--skip-local-variance", action="store_true")
@@ -1411,6 +1592,7 @@ def main() -> int:
                 system_id=reference_system_id,
                 runs=args.api_runs,
                 timeout_seconds=args.api_timeout,
+                force_cfrs_score_endpoint=args.force_cfrs_score_endpoint,
             )
 
         if not args.skip_query:
@@ -1429,6 +1611,7 @@ def main() -> int:
                 conn=conn,
                 api_base=args.api_base,
                 max_systems=25,
+                min_baseline_metrics=args.cfrs_min_baseline_metrics,
             )
 
     finally:

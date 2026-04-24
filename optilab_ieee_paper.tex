@@ -67,7 +67,7 @@
 \doi{}
 
 \begin{abstract}
-Efficient resource management in academic computing laboratories is a critical yet persistently unresolved operational challenge, characterized by heterogeneous hardware profiles, intermittent multi-tenant workloads, and limited institutional budgets for infrastructure analytics. Prevailing monitoring solutions mandate the installation of persistent software agents on every target endpoint, thereby introducing substantial deployment friction, expanding the network attack surface, and suffering from maintenance paralysis in diverse multi-OS environments. This paper presents \textbf{OptiLab}, a production-grade, end-to-end agentless monitoring infrastructure designed for zero-footprint deployment across academic computing clusters. OptiLab orchestrates dynamic subnet discovery via \texttt{nmap} and performs passive telemetry extraction through native remote management protocols---WMI for Windows, SSH for Linux/macOS, and SNMP for network devices---eliminating any software installation requirement on monitored machines. To address the exponential data growth inherent to high-frequency (5-minute interval) time-series telemetry, we architect the storage layer atop PostgreSQL extended with TimescaleDB, implementing hypertable-based automatic temporal partitioning, background columnar compression (achieving a verified 91\% storage reduction), and continuous aggregate materialization that accelerates analytical queries by 82x--342x. Critically, we introduce the \textbf{Composite Fault Risk Score (CFRS)}, a statistically rigorous, threshold-free anomaly detection algorithm that combines three orthogonal components---Deviation ($D$) via Z-score and Median Absolute Deviation, Variance ($V$) via Coefficient of Variation, and Trend ($S$) via linear regression slope---across explicitly separated Tier-1 bottleneck indicators (I/O wait, context switching, swap faults, thermal stress) and Tier-2 utilization metrics. Validated within a 200-system deployment and a 50-node simulated production environment, OptiLab demonstrated 100\% network discovery accuracy, sub-1\% metric collection variance compared to native tools, REST API response times averaging 125\,ms (p95 < 220\,ms), and successful preemptive detection of synthetic thrashing events that evaded conventional threshold-based alerting. The integrated system---spanning agentless collection, optimized time-series storage, predictive fault scoring, and a React-based visualization dashboard---provides a comprehensive, deployment-ready blueprint for next-generation automated facility management in resource-constrained academic settings.
+Efficient resource management in academic computing laboratories is a critical yet persistently unresolved operational challenge, characterized by heterogeneous hardware profiles, intermittent multi-tenant workloads, and limited institutional budgets for infrastructure analytics. Prevailing monitoring solutions mandate the installation of persistent software agents on every target endpoint, thereby introducing substantial deployment friction, expanding the network attack surface, and suffering from maintenance paralysis in diverse multi-OS environments. This paper presents \textbf{OptiLab}, a production-grade, end-to-end agentless monitoring infrastructure designed for zero-footprint deployment across academic computing clusters. OptiLab orchestrates dynamic subnet discovery via \texttt{nmap} and performs passive telemetry extraction through native remote management protocols---WMI for Windows and SSH for Linux---eliminating any software installation requirement on monitored machines. To address the exponential data growth inherent to high-frequency time-series telemetry, we architect the storage layer atop PostgreSQL extended with TimescaleDB, implementing hypertable-based automatic temporal partitioning, background columnar compression, and continuous aggregate materialization that accelerates analytical queries by 82x--342x. Critically, we introduce the \textbf{Composite Fault Risk Score (CFRS)}, a statistically rigorous, threshold-free anomaly detection algorithm that combines three orthogonal components---Deviation ($D$) via Z-score and Median Absolute Deviation, Variance ($V$) via Coefficient of Variation, and Trend ($S$) via linear regression slope, across explicitly separated Tier-1 bottleneck indicators (I/O wait, context switching, swap faults, thermal stress) and Tier-2 utilization metrics. Validated within a 200-system deployment and a 50-node simulated production environment, OptiLab demonstrated 100\% network discovery accuracy, sub-1\% metric collection variance compared to native tools, REST API response times averaging 125\,ms (p95 < 220\,ms), and preemptive detection of synthetic thrashing events that conventional threshold-based alerting failed to flag. This integrated system---spanning agentless collection, optimized time-series storage, predictive fault scoring, and a React-based visualization dashboard---provides a comprehensive, deployment-ready blueprint for next-generation automated facility management in resource-constrained academic settings.
 \end{abstract}
 
 \begin{keywords}
@@ -174,7 +174,7 @@ OptiLab employs a four-layer modular architecture designed for independent scali
 
 \begin{figure*}[t]
 \centering
-\includegraphics[width=\textwidth]{report/optilabs_architecture_diagram.jpeg}
+\includegraphics[width=\textwidth]{Images/Optilabs Architecture.jpeg}
 \caption{OptiLab System Architecture: Four-layer design spanning agentless collection, message queuing, time-series storage, and interactive visualization. Arrows indicate data flow direction; dashed lines represent optional RabbitMQ integration.}
 \label{fig:architecture}
 \end{figure*}
@@ -220,7 +220,7 @@ The database schema implements a hierarchical organizational model normalized to
 
 \begin{figure}[t]
 \centering
-\includegraphics[width=\columnwidth]{report/optilabs_er_diagram.jpeg}
+\includegraphics[width=\columnwidth]{Images/Optilabs Schema.jpeg}
 \caption{Entity-Relationship Diagram showing the eight core tables with primary keys, foreign key relationships, and cardinality constraints. The \texttt{metrics} table is converted to a TimescaleDB hypertable for automatic temporal partitioning.}
 \label{fig:er_diagram}
 \end{figure}
@@ -463,14 +463,14 @@ The frontend is built as a single-page application using React 18 with TypeScrip
 
 \begin{figure}[t]
 \centering
-\includegraphics[width=\columnwidth]{report/optilabs_metrics_page.jpeg}
+\includegraphics[width=\columnwidth]{Images/Optilabs Metrics Page.jpeg}
 \caption{System Detail page showing real-time metric gauges and 24-hour interactive time-series charts built with Recharts. Time range selectors enable 24h, 7d, and 30d historical views.}
 \label{fig:metrics_page}
 \end{figure}
 
 \begin{figure}[t]
 \centering
-\includegraphics[width=\columnwidth]{report/optilabs_dept_view.jpeg}
+\includegraphics[width=\columnwidth]{Images/Optilabs Dept view.jpeg}
 \caption{Department View displaying hierarchical lab navigation with per-lab system counts, utilization summaries, and color-coded health indicators.}
 \label{fig:dept_view}
 \end{figure}
@@ -485,7 +485,7 @@ The complete OptiLab pipeline operates in three phases, illustrated in Fig.~\ref
 
 \begin{figure}[t]
 \centering
-\includegraphics[width=\columnwidth]{report/optilabs_dfd_level_1.png}
+\includegraphics[width=\columnwidth]{Images/Optilabs Level 1.png}
 \caption{Level-1 Data Flow Diagram showing the six-stage pipeline from network discovery through visualization.}
 \label{fig:dataflow}
 \end{figure}

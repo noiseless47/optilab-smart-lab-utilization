@@ -13,6 +13,12 @@ claims in optilab_ieee_paper.tex.
   - Produces JSON report.
 - run_all_validations.sh
   - Wrapper to run benchmark suite and optional stress validation.
+- preflight_check.py
+   - Checks environment, DB/API reachability, and required artifacts before execution.
+- package_reports.py
+   - Zips generated reports for sharing/review.
+- HANDOFF_RUNBOOK.md
+   - End-to-end execution instructions for remote operators/reviewers.
 
 ## Claim-to-Metric Mapping
 
@@ -29,7 +35,8 @@ The benchmark runner covers these major claim categories:
    - Compares metrics_collector.sh output vs native /proc values.
 4. API response performance
    - Measures mean, p50, p95, max latency and success rate.
-   - Includes core endpoints and CFRS score endpoint.
+   - Includes core endpoints and probes CFRS score endpoint readiness.
+   - CFRS score benchmark is skipped automatically if backend returns non-ready server errors.
 5. Query acceleration
    - Compares raw metrics queries vs continuous aggregates.
    - Reports speedup_x for each query pair.
@@ -58,6 +65,12 @@ cd collector/validation
 python3 run_paper_benchmarks.py
 ```
 
+Run preflight first (recommended for handoff execution):
+
+```bash
+python3 preflight_check.py --output ./reports/preflight.json
+```
+
 Run with explicit expected inventory:
 
 ```bash
@@ -82,6 +95,12 @@ Run both benchmark and optional stress validation:
 ./run_all_validations.sh --with-stress
 ```
 
+Package report outputs:
+
+```bash
+python3 package_reports.py
+```
+
 ## Output Files
 
 Reports are written to collector/validation/reports:
@@ -97,4 +116,5 @@ Reports are written to collector/validation/reports:
 - Use expected-hosts inventory for true discovery-accuracy reporting.
 - Query speedups depend on available data volume and aggregate freshness.
 - CFRS scoring requires active baselines in cfrs_system_baselines.
+- CPU instant variance can be noisy under bursty load; rely on RAM variance and long-window CPU aggregates for publication claims.
 - Stress validation is optional and should be run on controlled test nodes.
