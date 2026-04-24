@@ -327,30 +327,36 @@ def insert_metrics(conn, system_id, metrics):
         cur.execute("""
             INSERT INTO metrics (
                 system_id, timestamp,
-                cpu_percent, cpu_temperature,
+                cpu_percent, cpu_temperature, cpu_iowait_percent,
                 ram_percent,
                 disk_percent, disk_read_mbps, disk_write_mbps,
                 network_sent_mbps, network_recv_mbps,
                 gpu_percent, gpu_memory_used_gb, gpu_temperature,
+                context_switch_rate, swap_in_rate, swap_out_rate,
+                page_fault_rate, major_page_fault_rate,
                 uptime_seconds, logged_in_users
             )
             VALUES (
                 %s, NOW(),
-                %s, %s,
+                %s, %s, %s,
                 %s,
                 %s, %s, %s,
                 %s, %s,
                 %s, %s, %s,
+                %s, %s, %s,
+                %s, %s,
                 %s, %s
             )
             ON CONFLICT DO NOTHING
         """, (
             system_id,
-            metrics.get("cpu_percent"), metrics.get("cpu_temperature"),
+            metrics.get("cpu_percent"), metrics.get("cpu_temperature"), metrics.get("cpu_iowait_percent"),
             metrics.get("ram_percent"),
             metrics.get("disk_percent"), metrics.get("disk_read_mbps"), metrics.get("disk_write_mbps"),
             metrics.get("network_sent_mbps"), metrics.get("network_recv_mbps"),
             metrics.get("gpu_percent"), metrics.get("gpu_memory_used_gb"), metrics.get("gpu_temperature"),
+            metrics.get("context_switch_rate"), metrics.get("swap_in_rate"), metrics.get("swap_out_rate"),
+            metrics.get("page_fault_rate"), metrics.get("major_page_fault_rate"),
             metrics.get("uptime_seconds"), metrics.get("logged_in_users")
         ))
         
