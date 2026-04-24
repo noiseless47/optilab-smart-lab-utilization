@@ -891,14 +891,52 @@ def collect_compression_stats(conn) -> Dict[str, Any]:
 
         cur.execute(
             """
-            SELECT
-                COALESCE(SUM(total_bytes), 0)::bigint AS total_bytes,
-                COALESCE(SUM(compressed_total_bytes), 0)::bigint AS compressed_total_bytes,
-                COUNT(*)::int AS chunk_count
-            FROM timescaledb_information.chunks
-            WHERE hypertable_name = 'metrics'
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_schema = 'timescaledb_information'
+              AND table_name = 'chunks'
             """
         )
+        chunk_columns = {row["column_name"] for row in cur.fetchall()}
+
+        if {"total_bytes", "compressed_total_bytes"}.issubset(chunk_columns):
+            cur.execute(
+                """
+                SELECT
+                    COALESCE(SUM(total_bytes), 0)::bigint AS total_bytes,
+                    COALESCE(SUM(compressed_total_bytes), 0)::bigint AS compressed_total_bytes,
+                    COUNT(*)::int AS chunk_count
+                FROM timescaledb_information.chunks
+                WHERE hypertable_name = 'metrics'
+                """
+            )
+        elif {"chunk_schema", "chunk_name"}.issubset(chunk_columns):
+            compressed_expr = (
+                "COALESCE(SUM(CASE WHEN is_compressed THEN chunk_total_bytes ELSE 0 END), 0)::bigint"
+                if "is_compressed" in chunk_columns
+                else "NULL::bigint"
+            )
+            cur.execute(
+                f"""
+                SELECT
+                    COALESCE(SUM(chunk_total_bytes), 0)::bigint AS total_bytes,
+                    {compressed_expr} AS compressed_total_bytes,
+                    COUNT(*)::int AS chunk_count
+                FROM (
+                    SELECT
+                        is_compressed,
+                        pg_total_relation_size(format('%I.%I', chunk_schema, chunk_name)) AS chunk_total_bytes
+                    FROM timescaledb_information.chunks
+                    WHERE hypertable_name = 'metrics'
+                ) chunk_sizes
+                """
+            )
+        else:
+            return {
+                "status": "skipped",
+                "reason": "TimescaleDB chunk metadata does not expose supported size columns",
+            }
+
         chunk_stats = cur.fetchone()
 
         total_bytes = safe_float(chunk_stats.get("total_bytes")) if chunk_stats else 0.0

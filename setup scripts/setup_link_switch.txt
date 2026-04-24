@@ -2,4 +2,25 @@ sudo nmcli device set eno1 managed no
 sudo systemctl restart NetworkManager
 sudo ip addr add 192.168.0.4/24 dev eno1
 sudo ip link set eno1 up
-sudo ip route add default via 192.168.0.4 dev eno1
+sudo ip route replace default via 192.168.0.1 dev eno1
+
+# Collector host quick checks
+ip -4 addr show dev eno1
+ip route
+ping -c 2 192.168.0.1
+nc -zv -w2 192.168.0.1 24
+
+# Collector host SSH test to bastion (non-interactive)
+ssh -oBatchMode=yes -oConnectTimeout=3 -p 24 iservce@192.168.0.1 'echo bastion-ok'
+
+# Bastion host commands (run on bastion machine)
+sudo systemctl status ssh
+sudo ss -ltnp | grep ':24\|:22'
+sudo grep -n '^Port' /etc/ssh/sshd_config
+sudo ufw status
+sudo ufw allow 24/tcp
+sudo systemctl restart ssh
+
+# End-to-end test from collector host
+cd /home/aayush/Desktop/Projects/optilab-smart-lab-utilization/collector
+python3 combined_monitor.py

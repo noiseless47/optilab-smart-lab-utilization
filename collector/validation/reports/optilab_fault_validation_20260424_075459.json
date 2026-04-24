@@ -1,0 +1,23 @@
+{
+  "report_id": "optilab_fault_validation_20260424_075459",
+  "generated_at_utc": "2026-04-24T07:54:59+00:00",
+  "host": "aayush-Victus-by-HP-Gaming-Laptop-15-fa0xxx",
+  "collector_script": "/home/aayush/Desktop/Projects/optilab-smart-lab-utilization/collector/metrics_collector.sh",
+  "scenarios_requested": [
+    "io",
+    "memory"
+  ],
+  "samples_per_phase": 6,
+  "stress_seconds": 45,
+  "cpu_threshold_percent": 90.0,
+  "results": {
+    "memory_thrash": {
+      "status": "skipped",
+      "reason": "stress-ng not installed"
+    },
+    "io_saturation": {
+      "status": "skipped",
+      "reason": "stress-ng not installed"
+    }
+  }
+}

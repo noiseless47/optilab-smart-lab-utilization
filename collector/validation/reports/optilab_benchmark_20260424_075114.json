@@ -1,0 +1,370 @@
+{
+  "report_id": "optilab_benchmark_20260424_075114",
+  "generated_at_utc": "2026-04-24T07:51:14+00:00",
+  "host": "aayush-Victus-by-HP-Gaming-Laptop-15-fa0xxx",
+  "platform": "Linux-6.17.0-19-generic-x86_64-with-glibc2.39",
+  "python_version": "3.12.3",
+  "config_path": "/home/aayush/Desktop/Projects/optilab-smart-lab-utilization/collector/config.json",
+  "api_base": "http://localhost:3000/api",
+  "db_dsn_redacted": "localhost:5433/optilab_mvp",
+  "reference_system_id": 170,
+  "discovery": {
+    "method": "configured_ranges",
+    "expected_count": 3,
+    "discovered_count": 4,
+    "matched_count": 2,
+    "accuracy_percent": 66.66666666666666,
+    "missing_count": 1,
+    "unexpected_count": 2,
+    "missing_examples": [
+      "192.168.0.1"
+    ],
+    "unexpected_examples": [
+      "192.168.0.10",
+      "192.168.0.11"
+    ]
+  },
+  "ingest_and_freshness": {
+    "total_systems": 4,
+    "fresh_systems": 2,
+    "fresh_window_minutes": 15,
+    "fresh_coverage_percent": 50.0,
+    "inserts_last_hour": 114,
+    "inserts_last_24h": 114,
+    "estimated_inserts_per_hour_from_24h": 4.75,
+    "collection_interval_stats": {
+      "window_hours": 24,
+      "sample_count": 112,
+      "avg_seconds": 10.639525098214285,
+      "p50_seconds": 10.4105545,
+      "p95_seconds": 10.736161899999999
+    }
+  },
+  "local_variance": {
+    "status": "ok",
+    "sample_count": 10,
+    "cpu_relative_error_percent": {
+      "mean": 120.24735584886966,
+      "p95": 426.55204633061453,
+      "max": 541.2330985915487
+    },
+    "ram_relative_error_percent": {
+      "mean": 0.29840168411878565,
+      "p95": 1.0829433942454423,
+      "max": 1.2679362693950913
+    },
+    "cpu_absolute_delta_percent_points": {
+      "mean": 10.71598807690135,
+      "p95": 30.69748391840269,
+      "max": 32.53814563928873
+    },
+    "ram_absolute_delta_percent_points": {
+      "mean": 0.15119225907103484,
+      "p95": 0.548151724822865,
+      "max": 0.6425576716825177
+    },
+    "sample_preview": [
+      {
+        "sample": 1,
+        "collector_cpu": 18.57,
+        "native_cpu": 4.806070826306918,
+        "collector_ram": 51.32,
+        "native_ram": 50.67744232831748
+      },
+      {
+        "sample": 2,
+        "collector_cpu": 5.14,
+        "native_cpu": 33.587786259541986,
+        "collector_ram": 50.7,
+        "native_ram": 50.62785937906277
+      },
+      {
+        "sample": 3,
+        "collector_cpu": 26.15,
+        "native_cpu": 24.402730375426618,
+        "collector_ram": 50.9,
+        "native_ram": 51.07223439684226
+      },
+      {
+        "sample": 4,
+        "collector_cpu": 22.34,
+        "native_cpu": 16.41025641025641,
+        "collector_ram": 50.71,
+        "native_ram": 50.7897338590906
+      },
+      {
+        "sample": 5,
+        "collector_cpu": 18.71,
+        "native_cpu": 12.564102564102564,
+        "collector_ram": 50.89,
+        "native_ram": 50.86050247715117
+      }
+    ]
+  },
+  "api_latency": {
+    "api_base": "http://localhost:3000/api",
+    "runs_per_endpoint": 30,
+    "endpoints": [
+      {
+        "url": "http://localhost:3000/api/systems/all",
+        "runs": 30,
+        "success_count": 30,
+        "failure_count": 0,
+        "success_rate_percent": 100.0,
+        "status_histogram": {
+          "200": 30
+        },
+        "error_histogram": {},
+        "mean_ms": 3.311740766685034,
+        "p50_ms": 2.2162395000577817,
+        "p95_ms": 2.7156297998999426,
+        "max_ms": 37.95073199989929,
+        "min_ms": 1.6009760001907125,
+        "name": "systems_all",
+        "path": "/systems/all"
+      },
+      {
+        "url": "http://localhost:3000/api/departments",
+        "runs": 30,
+        "success_count": 30,
+        "failure_count": 0,
+        "success_rate_percent": 100.0,
+        "status_histogram": {
+          "200": 30
+        },
+        "error_histogram": {},
+        "mean_ms": 3.5678445333208706,
+        "p50_ms": 3.701343999864548,
+        "p95_ms": 4.401686100004553,
+        "max_ms": 4.907820999960677,
+        "min_ms": 1.8276989999321813,
+        "name": "departments_all",
+        "path": "/departments"
+      },
+      {
+        "url": "http://localhost:3000/api/systems/170/metrics/latest",
+        "runs": 30,
+        "success_count": 30,
+        "failure_count": 0,
+        "success_rate_percent": 100.0,
+        "status_histogram": {
+          "200": 30
+        },
+        "error_histogram": {},
+        "mean_ms": 3.5892989666839035,
+        "p50_ms": 3.038283500018224,
+        "p95_ms": 7.933717450055149,
+        "max_ms": 9.535272999983135,
+        "min_ms": 2.251425999929779,
+        "name": "system_metrics_latest",
+        "path": "/systems/170/metrics/latest"
+      },
+      {
+        "url": "http://localhost:3000/api/systems/170/metrics?hours=24&limit=200",
+        "runs": 30,
+        "success_count": 30,
+        "failure_count": 0,
+        "success_rate_percent": 100.0,
+        "status_histogram": {
+          "200": 30
+        },
+        "error_histogram": {},
+        "mean_ms": 5.1029946000502,
+        "p50_ms": 5.005988000220896,
+        "p95_ms": 6.2317407002183245,
+        "max_ms": 7.56519800006572,
+        "min_ms": 3.6432530000638508,
+        "name": "system_metrics_24h",
+        "path": "/systems/170/metrics?hours=24&limit=200"
+      },
+      {
+        "url": "http://localhost:3000/api/systems/170/metrics/hourly?hours=24",
+        "runs": 30,
+        "success_count": 30,
+        "failure_count": 0,
+        "success_rate_percent": 100.0,
+        "status_histogram": {
+          "200": 30
+        },
+        "error_histogram": {},
+        "mean_ms": 3.224369166628094,
+        "p50_ms": 2.979428499884307,
+        "p95_ms": 5.252513100163011,
+        "max_ms": 6.018831999881513,
+        "min_ms": 2.5527459997647384,
+        "name": "system_metrics_hourly",
+        "path": "/systems/170/metrics/hourly?hours=24"
+      },
+      {
+        "url": "http://localhost:3000/api/systems/170/metrics/cfrs/latest",
+        "runs": 30,
+        "success_count": 30,
+        "failure_count": 0,
+        "success_rate_percent": 100.0,
+        "status_histogram": {
+          "200": 30
+        },
+        "error_histogram": {},
+        "mean_ms": 3.483583366672368,
+        "p50_ms": 3.2489989998794044,
+        "p95_ms": 6.059251100077745,
+        "max_ms": 6.753778000074817,
+        "min_ms": 2.477132999956666,
+        "name": "cfrs_metrics_latest",
+        "path": "/systems/170/metrics/cfrs/latest"
+      },
+      {
+        "url": "http://localhost:3000/api/systems/170/cfrs/score",
+        "runs": 30,
+        "success_count": 0,
+        "failure_count": 30,
+        "success_rate_percent": 0.0,
+        "status_histogram": {
+          "500": 30
+        },
+        "error_histogram": {
+          "HTTP 500": 30
+        },
+        "mean_ms": null,
+        "p50_ms": null,
+        "p95_ms": null,
+        "max_ms": null,
+        "min_ms": null,
+        "name": "cfrs_score",
+        "path": "/systems/170/cfrs/score"
+      }
+    ],
+    "summary": {
+      "fully_successful_endpoints": 6,
+      "total_endpoints": 7,
+      "mean_of_endpoint_means_ms": 3.713305233340078,
+      "p95_of_endpoint_means_ms": 4.724570691708625
+    }
+  },
+  "query_performance": {
+    "status": "ok",
+    "pairs": [
+      {
+        "label": "weekly_aggregation",
+        "raw_ms": {
+          "samples": [
+            0.668,
+            0.602,
+            0.549,
+            0.482,
+            0.48
+          ],
+          "mean": 0.5562,
+          "p50": 0.549,
+          "p95": 0.6548
+        },
+        "optimized_ms": {
+          "samples": [
+            0.035,
+            0.017,
+            0.015,
+            0.013,
+            0.011
+          ],
+          "mean": 0.0182,
+          "p50": 0.015,
+          "p95": 0.0314
+        },
+        "speedup_x": 36.6
+      },
+      {
+        "label": "daily_cfrs_tier1_trends",
+        "raw_ms": {
+          "samples": [
+            0.493,
+            0.481,
+            0.433,
+            0.37,
+            0.346
+          ],
+          "mean": 0.4246,
+          "p50": 0.433,
+          "p95": 0.4906
+        },
+        "optimized_ms": {
+          "samples": [
+            0.039,
+            0.034,
+            0.031,
+            0.03,
+            0.032
+          ],
+          "mean": 0.0332,
+          "p50": 0.032,
+          "p95": 0.038
+        },
+        "speedup_x": 13.53125
+      },
+      {
+        "label": "top_cpu_consumers",
+        "raw_ms": {
+          "samples": [
+            0.203,
+            0.173,
+            0.167,
+            0.163,
+            0.154
+          ],
+          "mean": 0.172,
+          "p50": 0.167,
+          "p95": 0.197
+        },
+        "optimized_ms": {
+          "samples": [
+            0.02,
+            0.019,
+            0.02,
+            0.018,
+            0.017
+          ],
+          "mean": 0.0188,
+          "p50": 0.019,
+          "p95": 0.02
+        },
+        "speedup_x": 8.789473684210527
+      }
+    ],
+    "statement_timeout_ms": 120000,
+    "summary": {
+      "pairs_total": 3,
+      "pairs_with_speedup": 3,
+      "min_speedup_x": 8.789473684210527,
+      "max_speedup_x": 36.6,
+      "mean_speedup_x": 19.640241228070177
+    }
+  },
+  "compression": {
+    "status": "ok",
+    "chunk_count": 9,
+    "total_bytes": 606208.0,
+    "compressed_total_bytes": 196608.0,
+    "total_size_human": "592.00 KB",
+    "compressed_size_human": "192.00 KB",
+    "compressed_portion_percent": 32.432432432432435,
+    "before_compression_total_bytes": null,
+    "after_compression_total_bytes": null,
+    "storage_savings_percent": null
+  },
+  "cfrs_readiness": {
+    "status": "ok",
+    "systems_checked": 0,
+    "systems_with_complete_baselines": 0,
+    "systems_with_scores": 0,
+    "risk_distribution": {
+      "low": 0,
+      "medium": 0,
+      "high": 0,
+      "critical": 0
+    },
+    "score_samples": []
+  },
+  "csv_outputs": {
+    "api_latency_csv": "/home/aayush/Desktop/Projects/optilab-smart-lab-utilization/collector/validation/reports/optilab_benchmark_20260424_075114_api_latency.csv",
+    "query_speedups_csv": "/home/aayush/Desktop/Projects/optilab-smart-lab-utilization/collector/validation/reports/optilab_benchmark_20260424_075114_query_speedups.csv"
+  }
+}
