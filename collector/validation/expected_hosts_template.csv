@@ -1,0 +1,4 @@
+ip_address,hostname,notes
+192.168.0.10,lab-pc-01,example
+192.168.0.11,lab-pc-02,example
+192.168.0.12,lab-pc-03,example
