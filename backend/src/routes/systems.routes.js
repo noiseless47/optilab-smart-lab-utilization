@@ -18,6 +18,39 @@ router.get("/all", async (req, res) => {
     }
 });
 
+// GET all discovered systems that still need explicit lab assignment
+router.get("/discovered", async (req, res) => {
+    try {
+        const systems = await departmentModel.getDiscoveredSystems();
+        res.status(200).json(systems);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+        console.error("Error:", err.message);
+    }
+});
+
+// PATCH assign a discovered/unassigned system to a lab
+router.patch("/:systemId/assign-lab", async (req, res) => {
+    try {
+        const systemId = parseInt(req.params.systemId);
+        const labId = parseInt(req.body.lab_id);
+
+        if (!labId) {
+            return res.status(400).json({ error: 'lab_id is required' });
+        }
+
+        const updated = await departmentModel.assignSystemToLab(systemId, labId);
+        res.status(200).json(updated);
+    } catch (err) {
+        const msg = err.message || 'Failed to assign system';
+        if (msg.includes('not found') || msg.includes('Invalid ID')) {
+            return res.status(404).json({ error: msg });
+        }
+        res.status(500).json({ error: msg });
+        console.error("Error:", msg);
+    }
+});
+
 // GET latest metrics for a system
 router.get("/:systemId/metrics/latest", async (req, res) => {
     try {
@@ -228,8 +261,17 @@ router.get("/:systemId/cfrs/score", async (req, res) => {
         const cfrs = await cfrsModel.computeCFRS(systemId, options);
         res.status(200).json(cfrs);
     } catch (err) {
-        res.status(500).json({ error: err.message });
-        console.error("Error:", err.message);
+        // Check if error is about missing baselines
+        if (err.message && err.message.includes('No baselines available')) {
+            res.status(400).json({ 
+                error: err.message,
+                code: 'NO_BASELINES',
+                message: 'Baselines must be computed before CFRS scoring. Please compute baselines first.'
+            });
+        } else {
+            res.status(500).json({ error: err.message });
+        }
+        console.error("Failed to compute CFRS:", err.message);
     }
 });
 

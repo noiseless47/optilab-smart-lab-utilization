@@ -38,11 +38,24 @@ BASTION_USER=${BASTION_USER:-jump}
 read -p "Enter SSH port (default: 22): " SSH_PORT
 SSH_PORT=${SSH_PORT:-22}
 
-read -p "Enter allowed collector server IP: " COLLECTOR_IP
-if [[ -z "$COLLECTOR_IP" ]]; then
-    log_error "Collector IP is required!"
+read -p "Enter allowed collector server IP(s), comma-separated (default: 192.168.0.2,192.168.0.3): " COLLECTOR_IPS_INPUT
+COLLECTOR_IPS_INPUT=${COLLECTOR_IPS_INPUT:-192.168.0.2,192.168.0.3}
+
+IFS=',' read -ra COLLECTOR_IPS_RAW <<< "$COLLECTOR_IPS_INPUT"
+COLLECTOR_IPS=()
+for ip in "${COLLECTOR_IPS_RAW[@]}"; do
+    cleaned_ip="${ip//[[:space:]]/}"
+    if [[ -n "$cleaned_ip" ]]; then
+        COLLECTOR_IPS+=("$cleaned_ip")
+    fi
+done
+
+if [[ ${#COLLECTOR_IPS[@]} -eq 0 ]]; then
+    log_error "At least one collector IP is required!"
     exit 1
 fi
+
+COLLECTOR_IPS_CSV="$(IFS=,; echo "${COLLECTOR_IPS[*]}")"
 
 read -p "Enter target network CIDR (e.g., 10.30.0.0/16): " TARGET_NETWORK
 if [[ -z "$TARGET_NETWORK" ]]; then
@@ -54,7 +67,7 @@ echo
 log_info "Configuration Summary:"
 echo "  Bastion User: $BASTION_USER"
 echo "  SSH Port: $SSH_PORT"
-echo "  Allowed Collector: $COLLECTOR_IP"
+echo "  Allowed Collectors: $COLLECTOR_IPS_CSV"
 echo "  Target Network: $TARGET_NETWORK"
 echo
 read -p "Continue with this configuration? (y/n): " CONFIRM
@@ -182,8 +195,10 @@ ufw --force reset
 ufw default deny incoming
 ufw default allow outgoing
 
-# Allow SSH from collector only
-ufw allow from $COLLECTOR_IP to any port $SSH_PORT proto tcp comment "Collector to Bastion SSH"
+# Allow SSH from each collector
+for collector_ip in "${COLLECTOR_IPS[@]}"; do
+    ufw allow from "$collector_ip" to any port "$SSH_PORT" proto tcp comment "Collector to Bastion SSH"
+done
 
 # Allow SSH to target network
 ufw allow out to $TARGET_NETWORK port 22 proto tcp comment "Bastion to Target SSH"
@@ -258,6 +273,12 @@ log_info "Step 7: Setting up SSH key forwarding..."
 mkdir -p /home/$BASTION_USER/.ssh
 cat > /home/$BASTION_USER/.ssh/config << EOF
 # SSH configuration for forwarding to targets
+Host 192.168.*
+    StrictHostKeyChecking no
+    UserKnownHostsFile=/dev/null
+    ServerAliveInterval 60
+    ServerAliveCountMax 3
+
 Host 10.30.*
     StrictHostKeyChecking no
     UserKnownHostsFile=/dev/null
@@ -302,13 +323,13 @@ echo
 echo "📋 CONFIGURATION SUMMARY:"
 echo "  • Bastion User: $BASTION_USER"
 echo "  • SSH Port: $SSH_PORT"
-echo "  • Allowed Collector: $COLLECTOR_IP"
+echo "  • Allowed Collectors: $COLLECTOR_IPS_CSV"
 echo "  • Target Network: $TARGET_NETWORK"
 echo
 echo "🔑 NEXT STEPS:"
 echo
-echo "1. Add collector's public key to bastion:"
-echo "   From collector server, run:"
+echo "1. Add each collector's public key to bastion:"
+echo "   From each collector server, run:"
 echo "   ssh-copy-id -i ~/.ssh/bastion_key.pub -p $SSH_PORT $BASTION_USER@$(hostname -I | awk '{print $1}')"
 echo
 echo "2. Add target SSH key to bastion user:"
@@ -337,7 +358,7 @@ echo "  • SSH password authentication is DISABLED"
 echo "  • Only key-based authentication is allowed"
 echo "  • Only $BASTION_USER can login"
 echo "  • All connections are logged and audited"
-echo "  • Firewall only allows collector IP: $COLLECTOR_IP"
+echo "  • Firewall only allows collector IPs: $COLLECTOR_IPS_CSV"
 echo
 echo "🔒 Configuration files backed up to:"
 echo "  /etc/ssh/sshd_config.backup.*"
@@ -353,7 +374,7 @@ Configuration:
 --------------
 Bastion User: $BASTION_USER
 SSH Port: $SSH_PORT
-Allowed Collector IP: $COLLECTOR_IP
+Allowed Collector IPs: $COLLECTOR_IPS_CSV
 Target Network: $TARGET_NETWORK
 Server IP: $(hostname -I | awk '{print $1}')
 Hostname: $(hostname)

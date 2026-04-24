@@ -239,6 +239,20 @@ class DepartmentModel {
         )
     }
 
+    async getDiscoveredSystems() {
+        return await this.query(
+            this.sql`
+                SELECT s.*, l.lab_number, d.dept_name
+                FROM systems s
+                LEFT JOIN labs l ON s.lab_id = l.lab_id
+                LEFT JOIN departments d ON s.dept_id = d.dept_id
+                WHERE s.status = 'discovered'
+                ORDER BY s.updated_at DESC, s.created_at DESC
+            `,
+            'Failed to get discovered systems'
+        )
+    }
+
     async getSystemsByLab(labID) {
         this.validateID(labID)
         return await this.query(
@@ -257,6 +271,37 @@ class DepartmentModel {
             this.sql`UPDATE systems SET ${setClause} WHERE system_id = ${id} RETURNING *`,
             'Failed to update system'
         )
+    }
+
+    async assignSystemToLab(systemID, labID) {
+        this.validateID(systemID)
+        this.validateID(labID)
+
+        const system = await this.getSystemByID(systemID)
+        if (!system) {
+            throw new Error('System not found')
+        }
+
+        const lab = await this.getLabByID(labID)
+        if (!lab) {
+            throw new Error('Lab not found')
+        }
+
+        const result = await this.query(
+            this.sql`
+                UPDATE systems
+                SET
+                    lab_id = ${labID},
+                    dept_id = ${lab.lab_dept},
+                    status = CASE WHEN status = 'discovered' THEN 'active' ELSE status END,
+                    updated_at = NOW()
+                WHERE system_id = ${systemID}
+                RETURNING *
+            `,
+            'Failed to assign system to lab'
+        )
+
+        return result[0] || null
     }
 
     async deleteSystem(id) {

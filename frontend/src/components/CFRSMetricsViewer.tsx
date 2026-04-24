@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { Activity, AlertCircle, TrendingUp, Zap, Gauge, Thermometer } from 'lucide-react'
 import { Line } from 'react-chartjs-2'
-import api from '../lib/api'
+import { useCFRSMetrics } from '../hooks/useCFRSData'
 
 interface CFRSMetric {
   timestamp: string
@@ -23,36 +23,15 @@ interface CFRSViewerProps {
 }
 
 export default function CFRSMetricsViewer({ systemId }: CFRSViewerProps) {
-  const [metrics, setMetrics] = useState<CFRSMetric[]>([])
-  const [latestMetrics, setLatestMetrics] = useState<CFRSMetric | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [timeRange, setTimeRange] = useState<number>(24) // hours
   const [viewMode, setViewMode] = useState<'tier1' | 'tier2' | 'all'>('tier1')
 
-  useEffect(() => {
-    fetchCFRSMetrics()
-  }, [systemId, timeRange])
+  const { data, isLoading: loading, error } = useCFRSMetrics(systemId, timeRange)
+  
+  const metrics = data?.metrics || []
+  const latestMetrics = data?.latest || null
 
-  const fetchCFRSMetrics = async () => {
-    try {
-      setLoading(true)
-      setError(null)
-      
-      const [metricsRes, latestRes] = await Promise.all([
-        api.get(`/systems/${systemId}/metrics/cfrs?hours=${timeRange}`),
-        api.get(`/systems/${systemId}/metrics/cfrs/latest`)
-      ])
-      
-      setMetrics(metricsRes.data)
-      setLatestMetrics(latestRes.data)
-    } catch (err: any) {
-      console.error('Error fetching CFRS metrics:', err)
-      setError(err.response?.data?.error || 'Failed to fetch CFRS metrics')
-    } finally {
-      setLoading(false)
-    }
-  }
+  // Removed manual fetchCFRSMetrics useEffect and function
 
   const formatValue = (value: number | string | undefined | null, decimals: number = 2): string => {
     if (value === null || value === undefined) return 'N/A'
@@ -126,10 +105,7 @@ export default function CFRSMetricsViewer({ systemId }: CFRSViewerProps) {
       <div className="card p-8 text-center bg-red-50 border-red-200">
         <AlertCircle className="w-12 h-12 text-red-400 mx-auto mb-4" />
         <h3 className="text-lg font-semibold text-red-800 mb-2">Error Loading CFRS Metrics</h3>
-        <p className="text-red-600">{error}</p>
-        <button onClick={fetchCFRSMetrics} className="btn-primary mt-4">
-          Retry
-        </button>
+        <p className="text-red-600">{error.message || 'Failed to fetch metrics'}</p>
       </div>
     )
   }

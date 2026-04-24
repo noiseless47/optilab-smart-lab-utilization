@@ -110,17 +110,15 @@ class MetricsModel {
             this.sql`
                 SELECT
                     hour_bucket as timestamp,
-                    avg_cpu_percent, max_cpu_percent, min_cpu_percent, p95_cpu_percent,
-                    avg_ram_percent, max_ram_percent, p95_ram_percent,
-                    avg_gpu_percent, max_gpu_percent,
-                    avg_disk_io_wait,
-                    total_disk_read_gb,
-                    total_disk_write_gb,
-                    avg_uptime_seconds,
+                    avg_cpu_percent, max_cpu_percent, min_cpu_percent, p95_cpu_percent, stddev_cpu_percent,
+                    avg_ram_percent, max_ram_percent, p95_ram_percent, stddev_ram_percent,
+                    avg_gpu_percent, max_gpu_percent, stddev_gpu_percent,
+                    avg_disk_percent, max_disk_percent, stddev_disk_percent,
                     metric_count
                 FROM hourly_performance_stats
                 WHERE system_id = ${systemID}
-                AND hour_bucket >= NOW() - (${hours}::integer || ' hours')::interval
+                AND hour_bucket >= DATE_TRUNC('hour', NOW()) - (${hours}::integer || ' hours')::interval
+                AND hour_bucket < DATE_TRUNC('hour', NOW())
                 ORDER BY hour_bucket DESC
             `,
             'Failed to get hourly stats'
@@ -158,18 +156,15 @@ class MetricsModel {
             this.sql`
                 SELECT
                     day_bucket as date,
-                    avg_cpu_percent, max_cpu_percent, p95_cpu_percent, cpu_above_80_minutes,
-                    avg_ram_percent, max_ram_percent, p95_ram_percent,
-                    avg_gpu_percent, max_gpu_percent, gpu_idle_minutes,
-                    avg_disk_io_wait,
-                    total_disk_read_gb,
-                    total_disk_write_gb,
-                    is_underutilized,
-                    is_overutilized,
+                    avg_cpu_percent, max_cpu_percent, min_cpu_percent, p95_cpu_percent, stddev_cpu_percent,
+                    avg_ram_percent, max_ram_percent, min_ram_percent, p95_ram_percent, stddev_ram_percent,
+                    avg_gpu_percent, max_gpu_percent, min_gpu_percent, stddev_gpu_percent,
+                    avg_disk_percent, max_disk_percent, min_disk_percent, stddev_disk_percent,
                     metric_count
                 FROM daily_performance_stats
                 WHERE system_id = ${systemID}
-                AND day_bucket >= NOW() - (${days}::integer || ' days')::interval
+                AND day_bucket >= DATE_TRUNC('day', NOW()) - (${days}::integer || ' days')::interval
+                AND day_bucket < DATE_TRUNC('day', NOW())
                 ORDER BY day_bucket DESC
             `,
             'Failed to get daily stats'

@@ -63,3 +63,6 @@ htmlcov/
 
 venv/
 paper/
+
+e()
+ycopg2
